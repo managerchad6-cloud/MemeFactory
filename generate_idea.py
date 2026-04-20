@@ -32,11 +32,11 @@ MAX_LABELS = 8
 # ======================
 
 _ART_STYLES = [
-    "extremely rough hand-drawn pencil sketch feel — uneven wobbly lines, scratchy cross-hatching in shadows, nothing is straight",
+    "extremely rough digital pencil sketch feel — uneven wobbly lines, scratchy cross-hatching in shadows, nothing is straight, all on a plain white canvas",
     "MS Paint tier — thick jagged outlines, solid block fills, zero anti-aliasing, colours slightly off-model like someone used the paint bucket wrong",
-    "crude marker drawing — thick felt-tip outlines with visible stroke direction, some areas filled with hasty overlapping strokes, not clean at all",
-    "mid-2000s DeviantArt fan-art energy — slightly cleaner than pure scribble but still flat and obviously meme-tier, soft outlines",
-    "quick ballpoint pen doodle on lined paper feel — thin scratchy lines, minimal fill, some areas just left white, very impatient energy",
+    "crude digital marker drawing — thick felt-tip style outlines with visible stroke direction, some areas filled with hasty overlapping strokes, not clean at all",
+    "mid-2000s DeviantArt fan-art energy — slightly cleaner than pure scribble but still flat and obviously meme-tier, soft outlines, white background",
+    "quick digital doodle feel — thin scratchy lines, minimal fill, some areas just left white, very impatient energy, like drawn fast in a free app",
     "Microsoft Word clip-art meets meme — overly smooth outlines but comically off-proportion, fills too saturated, everything slightly wrong",
 ]
 
@@ -69,8 +69,8 @@ _LABEL_LAYOUTS = [
 
 _COLOR_APPROACHES = [
     "flat solid colours, fairly saturated and slightly garish — too many colours, no restraint",
-    "limited palette: only 3–4 colours per character, feels like someone ran out of markers",
-    "muted desaturated colours, slightly washed out, like printed on bad paper",
+    "limited palette: only 3–4 colours per character, feels like someone ran out of digital swatches",
+    "muted desaturated colours, slightly washed out, like someone turned the saturation slider down too far",
     "bright oversaturated fills, almost neon in places — definitely chosen by someone who loved the colour wheel",
     "mostly flat but with a single rough shadow colour per character, added as a solid dark shape, no blending",
 ]
@@ -171,6 +171,7 @@ REQUIREMENTS:
 - Concrete, drawable clothing, props, accessories, and cosmetic modifications ONLY
 - Balanced negative space on BOTH sides for later text placement
 - Avoid crowding the center gap between characters
+- DIGITAL DRAWING ONLY — plain white background, no paper texture, no notebook lines, no grain, no physical media simulation
 
 STYLE FOR THIS GENERATION (follow these specifically — they define the organic feel):
 - Art style: {style["art_style"]}
