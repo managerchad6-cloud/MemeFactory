@@ -124,13 +124,27 @@ def require_prompt(idea: dict, key: str) -> str:
 
 
 def force_image_prompt(prompt: str) -> str:
-    """
-    Re-introduces the hard requirement that made the old script reliable.
-    """
     return (
         "OUTPUT REQUIREMENT:\n"
         "You MUST output an IMAGE.\n\n"
         + prompt.strip()
+    )
+
+
+def force_annotation_prompt(prompt: str) -> str:
+    """
+    Pass 2 wrapper. Overrides the 'do not modify' framing in annotation prompts —
+    Gemini latches onto that and returns an unlabelled copy. This reframes the task
+    as 'add text' rather than 'preserve image', while keeping both true.
+    """
+    return (
+        "OUTPUT REQUIREMENT:\n"
+        "You MUST output an IMAGE with every listed text label drawn onto it.\n"
+        "Adding the callout labels IS your task — the image is not complete without them.\n"
+        "Do not return the image unchanged. Every single label must be visible.\n\n"
+        + prompt.strip()
+        + "\n\nFINAL CHECK: every label listed above must appear in the output image. "
+        "An image with missing labels is a failed output."
     )
 
 
@@ -229,7 +243,7 @@ def main():
                 reskin_prompt = force_image_prompt(
                     require_prompt(idea, "reskin_prompt")
                 )
-                annotation_prompt = force_image_prompt(
+                annotation_prompt = force_annotation_prompt(
                     require_prompt(idea, "annotation_prompt")
                 )
                 logging.debug(f"  Prompts validated")
