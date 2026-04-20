@@ -75,32 +75,56 @@ _COLOR_APPROACHES = [
     "mostly flat but with a single rough shadow colour per character, added as a solid dark shape, no blending",
 ]
 
-_LABEL_PHRASINGS = [
-    "short",
-    "long",
-    "mixed",
+# Phrasing modes with target weights:
+#   muy_cortitos  20% — 2-3 word max fragments
+#   current       40% — 4-7 words, like existing outputs
+#   some_long     10% — mostly current length but 2-3 labels per side are full long sentences
+#   medium_plus   20% — 6-10 words, a step up from current
+#   full_mix      10% — genuine mix of very short, medium, and long in the same meme
+
+_LABEL_PHRASING_MODES = [
+    ("muy_cortitos", 20),
+    ("current",      40),
+    ("some_long",    10),
+    ("medium_plus",  20),
+    ("full_mix",     10),
 ]
 
 _LABEL_PHRASING_INSTRUCTIONS = {
-    "short": (
-        "short, punchy fragments — 2 to 5 words max. No full sentences. "
-        "Examples: 'always late', 'owns three chisels', 'cries at ads'."
+    "muy_cortitos": (
+        "extremely short fragments only — 2 to 3 words maximum per label, no exceptions. "
+        "Single noun phrases or verb fragments. "
+        "Examples: 'skill issue', 'no car', 'still at mom\\'s', 'cries at ads', 'always late'."
     ),
-    "long": (
-        "longer, specific descriptive phrases — 8 to 14 words each. Full clauses preferred. "
-        "Examples: 'spends 45 minutes choosing the perfect playlist before doing anything', "
-        "'knows the name of every barista within a 3-block radius'."
+    "current": (
+        "short punchy phrases — 4 to 7 words each. "
+        "Examples: 'needs caffeine to function', 'circles for parking like a vulture', "
+        "'owns three chisels he never uses'."
     ),
-    "mixed": (
-        "a natural mix: some labels are short punchy fragments (2–5 words), "
-        "others are longer specific clauses (8–14 words). Vary freely, no pattern."
+    "medium_plus": (
+        "medium-length descriptive phrases — 6 to 10 words each, slightly more specific than average. "
+        "Examples: 'still checking the weather app before leaving anyway', "
+        "'bought a standing desk, sits on a stool'."
+    ),
+    "some_long": (
+        "mostly short punchy phrases (4–7 words), BUT exactly 2 or 3 labels per character must be "
+        "full long sentences of 10 to 15 words. The long ones should be the most specific and funny. "
+        "Mix freely — the long ones can appear anywhere in the list."
+    ),
+    "full_mix": (
+        "a genuine mix of all lengths in the same meme: "
+        "at least 1 label per character must be very short (2–3 words), "
+        "at least 1 must be medium (6–10 words), "
+        "and at least 1 must be a long full sentence (10–15 words). "
+        "The rest can be any length. Do not group them by length."
     ),
 }
 
 
 def pick_style() -> dict:
     """Randomly select one option per style dimension for this generation."""
-    phrasing = random.choice(_LABEL_PHRASINGS)
+    modes, weights = zip(*_LABEL_PHRASING_MODES)
+    phrasing = random.choices(modes, weights=weights, k=1)[0]
     label_count = random.randint(MIN_LABELS, MAX_LABELS)
     return {
         "art_style":          random.choice(_ART_STYLES),
