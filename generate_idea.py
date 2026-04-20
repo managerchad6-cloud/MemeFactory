@@ -121,20 +121,30 @@ _LABEL_PHRASING_INSTRUCTIONS = {
 }
 
 
-def pick_style() -> dict:
-    """Randomly select one option per style dimension for this generation."""
+def _pick_side_style() -> dict:
+    """Pick independent label count and phrasing for one character side."""
     modes, weights = zip(*_LABEL_PHRASING_MODES)
     phrasing = random.choices(modes, weights=weights, k=1)[0]
-    label_count = random.randint(MIN_LABELS, MAX_LABELS)
     return {
-        "art_style":          random.choice(_ART_STYLES),
-        "title_style":        random.choice(_TITLE_STYLES),
-        "label_text_style":   random.choice(_LABEL_TEXT_STYLES),
-        "label_layout":       random.choice(_LABEL_LAYOUTS),
-        "color_approach":     random.choice(_COLOR_APPROACHES),
-        "label_phrasing":     phrasing,
-        "label_phrasing_instruction": _LABEL_PHRASING_INSTRUCTIONS[phrasing],
-        "label_count":        label_count,
+        "phrasing":     phrasing,
+        "instruction":  _LABEL_PHRASING_INSTRUCTIONS[phrasing],
+        "count":        random.randint(MIN_LABELS, MAX_LABELS),
+    }
+
+
+def pick_style() -> dict:
+    """Randomly select one option per style dimension for this generation.
+    Label count and phrasing are picked independently per side so variability
+    is visible within the same meme, not just across different memes.
+    """
+    return {
+        "art_style":        random.choice(_ART_STYLES),
+        "title_style":      random.choice(_TITLE_STYLES),
+        "label_text_style": random.choice(_LABEL_TEXT_STYLES),
+        "label_layout":     random.choice(_LABEL_LAYOUTS),
+        "color_approach":   random.choice(_COLOR_APPROACHES),
+        "virgin_labels":    _pick_side_style(),
+        "chad_labels":      _pick_side_style(),
     }
 
 
@@ -263,45 +273,47 @@ def resolve_labels(
 ) -> tuple:
     """
     Return the full label lists for this generation.
-    Count and phrasing style come from the style dict so each run varies.
-    If user already provided enough labels, return them clamped (phrasing untouched).
+    Each side has its own target count and phrasing style, picked independently,
+    so length and quantity vary visibly within the same meme.
+    User-provided labels are kept verbatim; only missing ones are generated.
     """
-    target = style["label_count"]
-    phrasing_instruction = style["label_phrasing_instruction"]
+    v_style = style["virgin_labels"]
+    c_style = style["chad_labels"]
+    v_target = v_style["count"]
+    c_target = c_style["count"]
 
-    v_full = len(virgin_labels) >= target
-    c_full = len(chad_labels) >= target
+    v_full = len(virgin_labels) >= v_target
+    c_full = len(chad_labels) >= c_target
 
     if v_full and c_full:
-        return virgin_labels[:target], chad_labels[:target]
+        return virgin_labels[:v_target], chad_labels[:c_target]
 
-    def label_section(side, labels):
+    def label_section(side, labels, target, instruction):
         if len(labels) >= target:
             return (
                 f"{side} — already complete, use these exactly:\n"
                 + "\n".join(f"- {l}" for l in labels[:target])
             )
+        header = (
+            f"{side} — generate exactly {target} labels. "
+            f"Phrasing style: {instruction}"
+        )
         if labels:
-            return (
-                f"{side} — keep these verbatim, add {target - len(labels)} more:\n"
-                + "\n".join(f"- {l}" for l in labels)
-            )
-        return f"{side} — generate exactly {target} labels."
+            header += f"\n  Keep these verbatim, add {target - len(labels)} more in the same style:\n"
+            header += "\n".join(f"  - {l}" for l in labels)
+        return header
 
-    prompt = f"""
-Virgin archetype: {virgin}
+    prompt = f"""Virgin archetype: {virgin}
 Chad archetype: {chad}
 
-LABEL PHRASING STYLE (apply to all generated labels): {phrasing_instruction}
+{label_section("VIRGIN", virgin_labels, v_target, v_style["instruction"])}
 
-{label_section("VIRGIN", virgin_labels)}
-
-{label_section("CHAD", chad_labels)}
+{label_section("CHAD", chad_labels, c_target, c_style["instruction"])}
 
 Return a JSON object with exactly two keys: "virgin_labels" and "chad_labels".
-Each value must be an array of exactly {target} strings.
-Output ONLY valid JSON. No commentary, no markdown.
-"""
+"virgin_labels" must have exactly {v_target} strings.
+"chad_labels" must have exactly {c_target} strings.
+No duplicates within each list. Output ONLY valid JSON."""
 
     resp = client.chat.completions.create(
         model=MODEL,
@@ -314,8 +326,8 @@ Output ONLY valid JSON. No commentary, no markdown.
     )
 
     data = json.loads(resp.choices[0].message.content)
-    full_virgin = data.get("virgin_labels", virgin_labels)[:target]
-    full_chad = data.get("chad_labels", chad_labels)[:target]
+    full_virgin = data.get("virgin_labels", virgin_labels)[:v_target]
+    full_chad = data.get("chad_labels", chad_labels)[:c_target]
     return full_virgin, full_chad
 
 
@@ -431,7 +443,9 @@ def generate_idea(
     context = load_text(base_dir / CONTEXT_FILE)
 
     style = pick_style()
-    print(f"Style: art={style['art_style'][:40]}… | title={style['title_style'][:40]}…")
+    print(f"Style: art={style['art_style'][:40]}…")
+    print(f"  virgin: {style['virgin_labels']['count']} labels, {style['virgin_labels']['phrasing']}")
+    print(f"  chad:   {style['chad_labels']['count']} labels, {style['chad_labels']['phrasing']}")
 
     print("Generating reskin prompt…")
     reskin_prompt = generate_reskin_prompt(
