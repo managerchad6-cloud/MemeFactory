@@ -24,8 +24,8 @@ CONTEXT_FILE = "context.json"
 # Support environment variable override for job isolation
 IDEAS_FILE = os.environ.get("IDEAS_FILE", "ideas.json")
 
-MIN_LABELS = 5
-MAX_LABELS = 8
+MIN_LABELS = 4
+MAX_LABELS = 7
 
 # ======================
 # STYLE RANDOMISATION
@@ -75,15 +75,42 @@ _COLOR_APPROACHES = [
     "mostly flat but with a single rough shadow colour per character, added as a solid dark shape, no blending",
 ]
 
+_LABEL_PHRASINGS = [
+    "short",
+    "long",
+    "mixed",
+]
+
+_LABEL_PHRASING_INSTRUCTIONS = {
+    "short": (
+        "short, punchy fragments — 2 to 5 words max. No full sentences. "
+        "Examples: 'always late', 'owns three chisels', 'cries at ads'."
+    ),
+    "long": (
+        "longer, specific descriptive phrases — 8 to 14 words each. Full clauses preferred. "
+        "Examples: 'spends 45 minutes choosing the perfect playlist before doing anything', "
+        "'knows the name of every barista within a 3-block radius'."
+    ),
+    "mixed": (
+        "a natural mix: some labels are short punchy fragments (2–5 words), "
+        "others are longer specific clauses (8–14 words). Vary freely, no pattern."
+    ),
+}
+
 
 def pick_style() -> dict:
     """Randomly select one option per style dimension for this generation."""
+    phrasing = random.choice(_LABEL_PHRASINGS)
+    label_count = random.randint(MIN_LABELS, MAX_LABELS)
     return {
-        "art_style":        random.choice(_ART_STYLES),
-        "title_style":      random.choice(_TITLE_STYLES),
-        "label_text_style": random.choice(_LABEL_TEXT_STYLES),
-        "label_layout":     random.choice(_LABEL_LAYOUTS),
-        "color_approach":   random.choice(_COLOR_APPROACHES),
+        "art_style":          random.choice(_ART_STYLES),
+        "title_style":        random.choice(_TITLE_STYLES),
+        "label_text_style":   random.choice(_LABEL_TEXT_STYLES),
+        "label_layout":       random.choice(_LABEL_LAYOUTS),
+        "color_approach":     random.choice(_COLOR_APPROACHES),
+        "label_phrasing":     phrasing,
+        "label_phrasing_instruction": _LABEL_PHRASING_INSTRUCTIONS[phrasing],
+        "label_count":        label_count,
     }
 
 
@@ -208,41 +235,47 @@ def resolve_labels(
     chad: str,
     virgin_labels: List[str],
     chad_labels: List[str],
+    style: dict,
 ) -> tuple:
     """
-    Return the full label lists (5–8 per character).
-    If user already provided >= MIN_LABELS, return them clamped.
-    Otherwise call the LLM to fill in the gaps and return the complete set.
+    Return the full label lists for this generation.
+    Count and phrasing style come from the style dict so each run varies.
+    If user already provided enough labels, return them clamped (phrasing untouched).
     """
-    v_full = len(virgin_labels) >= MIN_LABELS
-    c_full = len(chad_labels) >= MIN_LABELS
+    target = style["label_count"]
+    phrasing_instruction = style["label_phrasing_instruction"]
+
+    v_full = len(virgin_labels) >= target
+    c_full = len(chad_labels) >= target
 
     if v_full and c_full:
-        return clamp_labels(virgin_labels), clamp_labels(chad_labels)
+        return virgin_labels[:target], chad_labels[:target]
 
     def label_section(side, labels):
-        if len(labels) >= MIN_LABELS:
+        if len(labels) >= target:
             return (
                 f"{side} — already complete, use these exactly:\n"
-                + "\n".join(f"- {l}" for l in labels[:MAX_LABELS])
+                + "\n".join(f"- {l}" for l in labels[:target])
             )
         if labels:
             return (
-                f"{side} — keep these verbatim, add {MIN_LABELS - len(labels)}–{MAX_LABELS - len(labels)} more:\n"
+                f"{side} — keep these verbatim, add {target - len(labels)} more:\n"
                 + "\n".join(f"- {l}" for l in labels)
             )
-        return f"{side} — generate {MIN_LABELS}–{MAX_LABELS} labels."
+        return f"{side} — generate exactly {target} labels."
 
     prompt = f"""
 Virgin archetype: {virgin}
 Chad archetype: {chad}
+
+LABEL PHRASING STYLE (apply to all generated labels): {phrasing_instruction}
 
 {label_section("VIRGIN", virgin_labels)}
 
 {label_section("CHAD", chad_labels)}
 
 Return a JSON object with exactly two keys: "virgin_labels" and "chad_labels".
-Each value is an array of strings (the complete final label list).
+Each value must be an array of exactly {target} strings.
 Output ONLY valid JSON. No commentary, no markdown.
 """
 
@@ -257,8 +290,8 @@ Output ONLY valid JSON. No commentary, no markdown.
     )
 
     data = json.loads(resp.choices[0].message.content)
-    full_virgin = clamp_labels(data.get("virgin_labels", virgin_labels))
-    full_chad = clamp_labels(data.get("chad_labels", chad_labels))
+    full_virgin = data.get("virgin_labels", virgin_labels)[:target]
+    full_chad = data.get("chad_labels", chad_labels)[:target]
     return full_virgin, full_chad
 
 
@@ -383,7 +416,7 @@ def generate_idea(
 
     print("Resolving full label lists…")
     full_virgin_labels, full_chad_labels = resolve_labels(
-        client, context, virgin, chad, virgin_labels, chad_labels
+        client, context, virgin, chad, virgin_labels, chad_labels, style
     )
 
     print("Generating annotation prompt…")
