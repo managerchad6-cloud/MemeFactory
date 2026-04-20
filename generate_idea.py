@@ -121,6 +121,17 @@ _LABEL_PHRASING_INSTRUCTIONS = {
 }
 
 
+_LABEL_CONNECTORS = [
+    ("arrows",   50),  # pointer lines with arrowheads connecting labels to the character
+    ("floating", 50),  # labels float near the relevant body part, no lines or arrows
+]
+
+_LABEL_CONNECTOR_INSTRUCTIONS = {
+    "arrows":   "Connect each label to the relevant body part with a thin straight line and a small arrowhead.",
+    "floating": "Labels float near the relevant body part with no connecting lines or arrows — proximity implies the connection.",
+}
+
+
 def _pick_side_style() -> dict:
     """Pick independent label count and phrasing for one character side."""
     modes, weights = zip(*_LABEL_PHRASING_MODES)
@@ -137,14 +148,18 @@ def pick_style() -> dict:
     Label count and phrasing are picked independently per side so variability
     is visible within the same meme, not just across different memes.
     """
+    conn_modes, conn_weights = zip(*_LABEL_CONNECTORS)
+    connector = random.choices(conn_modes, weights=conn_weights, k=1)[0]
     return {
-        "art_style":        random.choice(_ART_STYLES),
-        "title_style":      random.choice(_TITLE_STYLES),
-        "label_text_style": random.choice(_LABEL_TEXT_STYLES),
-        "label_layout":     random.choice(_LABEL_LAYOUTS),
-        "color_approach":   random.choice(_COLOR_APPROACHES),
-        "virgin_labels":    _pick_side_style(),
-        "chad_labels":      _pick_side_style(),
+        "art_style":          random.choice(_ART_STYLES),
+        "title_style":        random.choice(_TITLE_STYLES),
+        "label_text_style":   random.choice(_LABEL_TEXT_STYLES),
+        "label_layout":       random.choice(_LABEL_LAYOUTS),
+        "color_approach":     random.choice(_COLOR_APPROACHES),
+        "virgin_labels":      _pick_side_style(),
+        "chad_labels":        _pick_side_style(),
+        "label_connector":    connector,
+        "label_connector_instruction": _LABEL_CONNECTOR_INSTRUCTIONS[connector],
     }
 
 

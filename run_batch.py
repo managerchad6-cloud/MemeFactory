@@ -142,9 +142,17 @@ def build_annotation_prompt(idea: dict) -> str:
     chad_labels = idea.get("chad_labels", [])
     v_lines = "\n".join(f"- {l}" for l in virgin_labels)
     c_lines = "\n".join(f"- {l}" for l in chad_labels)
+
+    style = idea.get("style", {})
+    connector_instruction = style.get(
+        "label_connector_instruction",
+        "Connect each label to the relevant body part with a thin straight line and a small arrowhead.",
+    )
+
     return (
-        "Add these text labels to the image with small black text and pointer lines. "
-        "Keep all existing artwork unchanged.\n\n"
+        f"Add these text labels to the image with small black text. "
+        f"{connector_instruction} "
+        f"Keep all existing artwork unchanged.\n\n"
         f"Left character:\n{v_lines}\n\n"
         f"Right character:\n{c_lines}\n\n"
         "Output the labelled image."
