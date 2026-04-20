@@ -243,7 +243,8 @@ Write the FULL Nanobanana IMAGE RESKIN PROMPT for the FIRST image pass.
 REQUIREMENTS:
 - Use the standard Virgin vs Chad base template
 - Absolute locks: overall silhouette, head position, torso, leg stance, facial proportions, and expressions — IDENTICAL to base template
-- LIMB RULE: Every character has EXACTLY TWO arms. Not three. Not four. Two. If a character is holding a prop, that prop is held by one of their two existing hands — the arm moves to accommodate the prop, it does NOT multiply. Before finalising, count the arms on each character. If you see more than two, you have made an error and must correct it.
+- LIMB RULE: Every character has EXACTLY TWO arms. Not three. Not four. Two.
+- PROP RULE: Each character may hold AT MOST ONE item in their hands. Any additional props must be worn (hat, glasses, backpack, lanyard) or attached to the body (belt clip, pocket) — never hand-held. Describing two hand-held items forces a third arm. Do not do it.
 - Concrete, drawable clothing, props, accessories, and cosmetic modifications ONLY
 - Balanced negative space on BOTH sides for later text placement
 - Avoid crowding the center gap between characters
