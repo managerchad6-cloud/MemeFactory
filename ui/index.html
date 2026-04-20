@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MemeFactory — Virgin vs Chad</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --virgin-bg:     #0b0f1a;
+      --chad-bg:       #120d00;
+      --virgin-accent: #5b8dd9;
+      --chad-accent:   #d4952a;
+      --text:          #dde1ea;
+      --muted:         #4a4f5e;
+      --border:        #1e2230;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: var(--text);
+      font-family: var(--font);
+    }
+
+    /* ── Layout ── */
+    #app {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem 2rem 6rem;
+      gap: 0.75rem;
+    }
+
+    .virgin-panel { background: var(--virgin-bg); border-right: 1px solid var(--border); }
+    .chad-panel   { background: var(--chad-bg); }
+
+    /* ── Panel header ── */
+    .panel-header {
+      font-size: 1.6rem;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid;
+    }
+    .virgin-panel .panel-header { color: var(--virgin-accent); border-color: var(--virgin-accent); }
+    .chad-panel   .panel-header { color: var(--chad-accent);   border-color: var(--chad-accent); }
+
+    /* ── Name input ── */
+    .name-input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1.05rem;
+      font-weight: 600;
+      padding: 0.65rem 1rem;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .name-input::placeholder { color: var(--muted); font-weight: 400; }
+    .virgin-panel .name-input:focus { border-color: var(--virgin-accent); background: rgba(91,141,217,0.06); }
+    .chad-panel   .name-input:focus { border-color: var(--chad-accent);   background: rgba(212,149,42,0.06); }
+
+    /* ── Labels textarea ── */
+    .label-hint {
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .labels-area {
+      flex: 1;
+      width: 100%;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.93rem;
+      line-height: 1.7;
+      padding: 0.8rem 1rem;
+      resize: none;
+      outline: none;
+      font-family: var(--font);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .labels-area::placeholder { color: var(--muted); }
+    .virgin-panel .labels-area:focus { border-color: var(--virgin-accent); background: rgba(91,141,217,0.04); }
+    .chad-panel   .labels-area:focus { border-color: var(--chad-accent);   background: rgba(212,149,42,0.04); }
+
+    /* ── Submit bar ── */
+    #submit-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85) 40%);
+      z-index: 10;
+    }
+
+    #submit-btn {
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 0.8rem 3.5rem;
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+    }
+    #submit-btn:hover:not(:disabled) { background: #e8e8e8; transform: translateY(-1px); box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    #submit-btn:active:not(:disabled) { transform: translateY(0); }
+    #submit-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; box-shadow: none; }
+
+    /* ── Overlays ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      backdrop-filter: blur(6px);
+    }
+    .overlay.active { display: flex; }
+
+    /* ── Loading ── */
+    #loading-overlay { background: rgba(0,0,0,0.72); }
+
+    .spinner {
+      width: 52px; height: 52px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .loading-timer {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.08em;
+    }
+
+    /* ── Result ── */
+    #result-overlay { background: rgba(0,0,0,0.93); }
+
+    #result-image {
+      max-width: 88vw;
+      max-height: 68vh;
+      border-radius: 8px;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.7);
+      object-fit: contain;
+      display: none;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      padding: 0.75rem 2rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.1s, opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-download { background: #fff; color: #000; }
+    .btn-back     { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); }
+
+    /* ── Error box ── */
+    #error-box {
+      display: none;
+      background: rgba(180,40,40,0.12);
+      border: 1px solid rgba(200,60,60,0.35);
+      border-radius: 8px;
+      padding: 1.5rem 2.5rem;
+      max-width: 560px;
+      text-align: center;
+    }
+    #error-box.active { display: block; }
+    #error-box h2 { color: #e05555; font-size: 0.85rem; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    #error-msg { color: #999; font-size: 0.85rem; word-break: break-word; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Virgin panel -->
+  <div class="panel virgin-panel">
+    <div class="panel-header">The Virgin</div>
+    <input class="name-input" id="virgin-name" type="text"
+           placeholder="e.g. Linux user" autocomplete="off" />
+    <p class="label-hint">Labels &mdash; one per line</p>
+    <textarea class="labels-area" id="virgin-labels"
+              placeholder="Uses the terminal&#10;Reads man pages&#10;No social life&#10;Compiles from source&#10;..."></textarea>
+  </div>
+
+  <!-- Chad panel -->
+  <div class="panel chad-panel">
+    <div class="panel-header">The Chad</div>
+    <input class="name-input" id="chad-name" type="text"
+           placeholder="e.g. Windows user" autocomplete="off" />
+    <p class="label-hint">Labels &mdash; one per line</p>
+    <textarea class="labels-area" id="chad-labels"
+              placeholder="Just works&#10;Gaming ready&#10;Runs everything&#10;No setup required&#10;..."></textarea>
+  </div>
+</div>
+
+<!-- Submit bar -->
+<div id="submit-bar">
+  <button id="submit-btn" onclick="generateMeme()">Generate Meme</button>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" class="overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Generating your meme&hellip;</div>
+  <div class="loading-timer" id="loading-timer"></div>
+</div>
+
+<!-- Result overlay -->
+<div id="result-overlay" class="overlay">
+  <img id="result-image" alt="Generated meme" />
+  <div id="error-box">
+    <h2>Generation Failed</h2>
+    <p id="error-msg"></p>
+  </div>
+  <div class="result-actions">
+    <button class="btn btn-download" id="download-btn" onclick="downloadImage()" style="display:none">
+      Download
+    </button>
+    <button class="btn btn-back" onclick="goBack()">Generate Another</button>
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'https://virginvschad.vip';
+  const POLL_MS  = 3000;
+
+  let blobUrl      = null;
+  let filename     = 'meme.png';
+  let pollTimer    = null;
+  let elapsedTimer = null;
+  let elapsedSec   = 0;
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+  async function generateMeme() {
+    const virgin = document.getElementById('virgin-name').value.trim();
+    const chad   = document.getElementById('chad-name').value.trim();
+
+    if (!virgin || !chad) {
+      alert('Enter both a Virgin and a Chad name.');
+      return;
+    }
+
+    const virginLabels = parseLabels('virgin-labels');
+    const chadLabels   = parseLabels('chad-labels');
+
+    const body = { virgin, chad };
+    if (virginLabels.length) body.virgin_labels = virginLabels;
+    if (chadLabels.length)   body.chad_labels   = chadLabels;
+
+    showLoading();
+
+    try {
+      const res = await fetch(`${API_BASE}/generate/raw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const { job_id } = await res.json();
+      startPolling(job_id);
+
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // ── Polling ─────────────────────────────────────────────────────────────
+  function startPolling(job_id) {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => pollJob(job_id), POLL_MS);
+    // also poll immediately
+    pollJob(job_id);
+  }
+
+  async function pollJob(job_id) {
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${job_id}`);
+      if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
+      const data = await res.json();
+
+      if (data.status === 'done') {
+        clearInterval(pollTimer);
+        await fetchImage(job_id);
+      } else if (data.status === 'failed') {
+        clearInterval(pollTimer);
+        showError(data.error || 'Generation failed');
+      }
+      // 'processing' → keep polling
+    } catch (err) {
+      clearInterval(pollTimer);
+      showError(err.message);
+    }
+  }
+
+  async function fetchImage(job_id) {
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${job_id}/image`);
+      if (!res.ok) throw new Error(`Image fetch failed: ${res.status}`);
+
+      const blob = await res.blob();
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(blob);
+
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m  = cd.match(/filename="?([^";\n]+)"?/);
+      filename  = m ? m[1] : `${job_id}.png`;
+
+      showResult(blobUrl);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // ── State helpers ────────────────────────────────────────────────────────
+  function parseLabels(id) {
+    return document.getElementById(id).value
+      .split('\n').map(l => l.trim()).filter(Boolean);
+  }
+
+  function showLoading() {
+    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('result-overlay').classList.remove('active');
+    document.getElementById('loading-overlay').classList.add('active');
+
+    elapsedSec = 0;
+    document.getElementById('loading-timer').textContent = '';
+    clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(() => {
+      elapsedSec++;
+      document.getElementById('loading-timer').textContent =
+        `${elapsedSec}s elapsed`;
+    }, 1000);
+  }
+
+  function showResult(url) {
+    clearInterval(elapsedTimer);
+    document.getElementById('loading-overlay').classList.remove('active');
+
+    const img = document.getElementById('result-image');
+    img.src = url;
+    img.style.display = 'block';
+
+    document.getElementById('error-box').classList.remove('active');
+    document.getElementById('download-btn').style.display = '';
+    document.getElementById('result-overlay').classList.add('active');
+  }
+
+  function showError(msg) {
+    clearInterval(elapsedTimer);
+    document.getElementById('loading-overlay').classList.remove('active');
+
+    document.getElementById('result-image').style.display = 'none';
+    document.getElementById('download-btn').style.display = 'none';
+    document.getElementById('error-msg').textContent = msg;
+    document.getElementById('error-box').classList.add('active');
+    document.getElementById('result-overlay').classList.add('active');
+
+    document.getElementById('submit-btn').disabled = false;
+  }
+
+  function goBack() {
+    clearInterval(pollTimer);
+    document.getElementById('result-overlay').classList.remove('active');
+    document.getElementById('submit-btn').disabled = false;
+  }
+
+  function downloadImage() {
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+  }
+
+  // UX: Enter on name field → focus labels textarea
+  document.getElementById('virgin-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('virgin-labels').focus();
+  });
+  document.getElementById('chad-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('chad-labels').focus();
+  });
+</script>
+
+</body>
+</html>

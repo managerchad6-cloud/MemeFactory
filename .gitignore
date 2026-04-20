@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated output
+jobs/
+out/
+logz/
+ideas.json
+memes.db
+
+# Log files
+run_batch_*.log
+
+# Scratch / archive
+_api.py
+refactor.json

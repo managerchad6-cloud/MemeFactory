@@ -1,0 +1,15 @@
+# Core dependencies
+python-dotenv==1.0.0
+Pillow==10.1.0
+
+# AI/ML APIs
+openai==1.54.0
+google-generativeai==0.8.3
+
+# Telegram Bot
+python-telegram-bot==21.8
+
+# Web API (FastAPI)
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3

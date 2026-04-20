@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MemeFactory — All Memes</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:            #0b0f1a;
+      --virgin-accent: #5b8dd9;
+      --chad-accent:   #d4952a;
+      --text:          #dde1ea;
+      --muted:         #4a4f5e;
+      --border:        #1e2230;
+      --card-bg:       #111521;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    html, body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+
+    .wordmark {
+      font-size: 1rem;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .wordmark span:first-child { color: var(--virgin-accent); }
+    .wordmark span:last-child  { color: var(--chad-accent); }
+
+    .header-nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: color 0.15s;
+    }
+    .header-nav a:hover { color: var(--text); }
+
+    /* ── Page title ── */
+    .page-title {
+      padding: 2rem 2rem 0.5rem;
+      font-size: 1.4rem;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .page-subtitle {
+      padding: 0 2rem 1.5rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0 2rem 1.5rem;
+    }
+
+    .filter-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.9rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-btn:hover { color: var(--text); border-color: var(--muted); }
+    .filter-btn.active {
+      background: var(--virgin-accent);
+      border-color: var(--virgin-accent);
+      color: #fff;
+    }
+
+    .page-size-label {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* ── Grid ── */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      padding: 0 2rem 2rem;
+    }
+
+    .meme-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.15s, transform 0.15s;
+      cursor: pointer;
+    }
+    .meme-card:hover {
+      border-color: var(--virgin-accent);
+      transform: translateY(-2px);
+    }
+
+    .card-img-wrap {
+      aspect-ratio: 1 / 1;
+      background: #0a0d16;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .card-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .card-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .card-footer {
+      padding: 0.65rem 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .card-date {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .status-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.55rem;
+      border-radius: 3px;
+    }
+    .status-done       { background: rgba(91,141,217,0.15); color: var(--virgin-accent); }
+    .status-processing { background: rgba(212,149,42,0.15);  color: var(--chad-accent); }
+    .status-failed     { background: rgba(180,40,40,0.15);   color: #e05555; }
+
+    /* ── Empty / error ── */
+    #state-msg {
+      display: none;
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      letter-spacing: 0.06em;
+    }
+    #state-msg.active { display: block; }
+
+    /* ── Pagination ── */
+    #pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0 2rem 3rem;
+    }
+
+    .page-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.45rem 1.1rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .page-btn:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .page-info {
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 0 0.5rem;
+    }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.92);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    #lightbox.active { display: flex; }
+
+    #lightbox img {
+      max-width: 90vw;
+      max-height: 80vh;
+      border-radius: 8px;
+      object-fit: contain;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.7);
+    }
+
+    .lightbox-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      padding: 0.7rem 2rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.1s, opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    .btn-download { background: #fff; color: #000; }
+    .btn-close    { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); }
+
+    /* ── Loading skeleton ── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--card-bg) 25%, #161b2a 50%, var(--card-bg) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 4px;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    /* ── FAB button ── */
+    #fab-root {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.75rem;
+    }
+
+    #fab-btn {
+      background: var(--virgin-accent);
+      color: #fff;
+      border: none;
+      border-radius: 24px;
+      padding: 0.8rem 1.5rem;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(91,141,217,0.45);
+      transition: transform 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+    #fab-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(91,141,217,0.55); }
+
+    /* ── Create panel ── */
+    #fab-panel {
+      display: none;
+      flex-direction: column;
+      width: 480px;
+      max-height: 86vh;
+      overflow-y: auto;
+      background: #0f1322;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 16px 64px rgba(0,0,0,0.65);
+    }
+    #fab-panel.open { display: flex; }
+
+    .fp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.9rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: #0f1322;
+      z-index: 1;
+    }
+    .fp-title { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+    .fp-header-btns { display: flex; gap: 0.5rem; align-items: center; }
+    .fp-reset-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.28rem 0.65rem;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .fp-reset-btn:hover { color: var(--text); border-color: var(--muted); }
+    .fp-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 1.1rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0.15rem 0.35rem;
+      transition: color 0.15s;
+    }
+    .fp-close-btn:hover { color: var(--text); }
+
+    #fp-form { padding: 1.1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .fp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+    .fp-col-head { font-size: 0.68rem; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 0.4rem; }
+    .fp-virgin-col .fp-col-head { color: var(--virgin-accent); }
+    .fp-chad-col   .fp-col-head { color: var(--chad-accent); }
+
+    .fp-input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 0.86rem;
+      font-weight: 600;
+      padding: 0.48rem 0.75rem;
+      outline: none;
+      font-family: var(--font);
+      transition: border-color 0.15s;
+      margin-bottom: 0.4rem;
+    }
+    .fp-input::placeholder { color: var(--muted); font-weight: 400; }
+    .fp-virgin-col .fp-input:focus { border-color: var(--virgin-accent); }
+    .fp-chad-col   .fp-input:focus { border-color: var(--chad-accent); }
+
+    .fp-hint { font-size: 0.63rem; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 0.3rem; }
+
+    .fp-labels {
+      width: 100%;
+      height: 76px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 0.8rem;
+      line-height: 1.6;
+      padding: 0.48rem 0.75rem;
+      resize: none;
+      outline: none;
+      font-family: var(--font);
+      transition: border-color 0.15s;
+    }
+    .fp-labels::placeholder { color: var(--muted); }
+    .fp-virgin-col .fp-labels:focus { border-color: var(--virgin-accent); }
+    .fp-chad-col   .fp-labels:focus { border-color: var(--chad-accent); }
+
+    .fp-or-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.1rem 0; }
+    .fp-or-line { flex: 1; height: 1px; background: var(--border); }
+    .fp-or-text { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.06em; white-space: nowrap; }
+
+    #fp-llm-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .fp-freestyle {
+      width: 100%;
+      height: 70px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 0.84rem;
+      line-height: 1.55;
+      padding: 0.52rem 0.75rem;
+      resize: none;
+      outline: none;
+      font-family: var(--font);
+      transition: border-color 0.15s;
+    }
+    .fp-freestyle:focus { border-color: rgba(91,141,217,0.5); }
+    .fp-freestyle::placeholder { color: var(--muted); font-style: italic; }
+
+    .fp-llm-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .fp-llm-hint { font-size: 0.66rem; color: var(--muted); line-height: 1.4; }
+
+    .fp-parse-btn {
+      flex-shrink: 0;
+      background: rgba(91,141,217,0.1);
+      border: 1px solid rgba(91,141,217,0.3);
+      border-radius: 5px;
+      color: var(--virgin-accent);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.45rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .fp-parse-btn:hover:not(:disabled) { background: rgba(91,141,217,0.2); border-color: var(--virgin-accent); }
+    .fp-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .fp-parse-error { font-size: 0.72rem; color: #e05555; line-height: 1.4; }
+
+    /* Either/or locking — whichever section is not active fades out */
+    .fp-locked { opacity: 0.22; pointer-events: none; user-select: none; transition: opacity 0.2s; }
+
+    .fp-submit {
+      width: 100%;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 0.78rem;
+      font-size: 0.83rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .fp-submit:hover:not(:disabled) { background: #e8e8e8; transform: translateY(-1px); }
+    .fp-submit:disabled { background: #222; color: #555; cursor: not-allowed; }
+
+    #fp-loading { padding: 2.5rem 1.25rem; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; }
+    .fp-spinner {
+      width: 38px; height: 38px;
+      border: 3px solid rgba(255,255,255,0.08);
+      border-top-color: var(--virgin-accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    .fp-load-text { font-size: 0.82rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55); }
+    .fp-load-timer { font-size: 0.7rem; color: var(--muted); }
+
+    #fp-result { padding: 1.1rem; display: flex; flex-direction: column; gap: 0.9rem; align-items: center; }
+    #fp-result-img { width: 100%; border-radius: 6px; object-fit: contain; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    .fp-res-actions { display: flex; gap: 0.6rem; width: 100%; }
+    .fp-res-btn {
+      flex: 1; padding: 0.68rem; border-radius: 5px; font-size: 0.76rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .fp-res-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .fp-res-dl      { background: #fff; color: #000; }
+    .fp-res-another { background: rgba(255,255,255,0.07); color: var(--text); border: 1px solid var(--border) !important; }
+
+    @media (max-width: 540px) {
+      #fab-panel { width: calc(100vw - 1.5rem); }
+      .fp-cols   { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">
+    <span>Virgin</span><span style="color:var(--muted);margin:0 0.3em">vs</span><span>Chad</span>
+  </div>
+  <nav class="header-nav">
+    <a href="/">Generate</a>
+  </nav>
+</header>
+
+<h1 class="page-title">All Memes</h1>
+<p class="page-subtitle" id="subtitle">Loading&hellip;</p>
+
+<div class="filter-bar">
+  <button class="filter-btn active" data-status="">All</button>
+  <button class="filter-btn" data-status="done">Done</button>
+  <button class="filter-btn" data-status="processing">Processing</button>
+  <button class="filter-btn" data-status="failed">Failed</button>
+  <span class="page-size-label">Showing 20 per page</span>
+</div>
+
+<div id="grid"></div>
+<p id="state-msg"></p>
+
+<div id="pagination">
+  <button class="page-btn" id="btn-prev" disabled>← Prev</button>
+  <span class="page-info" id="page-info"></span>
+  <button class="page-btn" id="btn-next" disabled>Next →</button>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <img id="lb-img" alt="Meme" />
+  <div class="lightbox-actions">
+    <button class="btn btn-download" id="lb-download">Download</button>
+    <button class="btn btn-close" onclick="closeLightbox()">Close</button>
+  </div>
+</div>
+
+<script>
+  const API  = 'https://virginvschad.vip';
+  const LIMIT = 20;
+
+  let currentPage   = 1;
+  let currentStatus = '';
+  let currentTotal  = 0;
+
+  // ── Filter buttons ────────────────────────────────────────────────────────
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentStatus = btn.dataset.status;
+      currentPage   = 1;
+      loadPage();
+    });
+  });
+
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    if (currentPage > 1) { currentPage--; loadPage(); }
+  });
+  document.getElementById('btn-next').addEventListener('click', () => {
+    if (currentPage * LIMIT < currentTotal) { currentPage++; loadPage(); }
+  });
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+  async function loadPage() {
+    const grid    = document.getElementById('grid');
+    const stateEl = document.getElementById('state-msg');
+    stateEl.classList.remove('active');
+
+    // Show skeletons while loading
+    grid.innerHTML = Array.from({length: 8}, () => `
+      <div class="meme-card" style="pointer-events:none">
+        <div class="card-img-wrap skeleton"></div>
+        <div class="card-footer">
+          <div class="skeleton" style="width:80px;height:12px;border-radius:3px"></div>
+          <div class="skeleton" style="width:48px;height:16px;border-radius:3px"></div>
+        </div>
+      </div>
+    `).join('');
+
+    const params = new URLSearchParams({ page: currentPage, limit: LIMIT });
+    if (currentStatus) params.set('status', currentStatus);
+
+    let data;
+    try {
+      const res = await fetch(`${API}/memes?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    } catch (err) {
+      grid.innerHTML = '';
+      stateEl.textContent = `Failed to load memes: ${err.message}`;
+      stateEl.classList.add('active');
+      return;
+    }
+
+    currentTotal = data.total;
+
+    // Update subtitle
+    document.getElementById('subtitle').textContent =
+      `${data.total.toLocaleString()} meme${data.total !== 1 ? 's' : ''} generated`;
+
+    // Update pagination
+    document.getElementById('page-info').textContent =
+      `Page ${data.page} of ${Math.max(1, Math.ceil(data.total / LIMIT))}`;
+    document.getElementById('btn-prev').disabled = !data.has_prev;
+    document.getElementById('btn-next').disabled = !data.has_next;
+
+    if (!data.items.length) {
+      grid.innerHTML = '';
+      stateEl.textContent = currentStatus
+        ? `No ${currentStatus} memes found.`
+        : 'No memes generated yet.';
+      stateEl.classList.add('active');
+      return;
+    }
+
+    grid.innerHTML = data.items.map(item => `
+      <div class="meme-card" data-job="${item.job_id}" data-status="${item.status}"
+           onclick="openLightbox('${item.job_id}', this)">
+        <div class="card-img-wrap">
+          ${item.status === 'done'
+            ? `<img src="${API}/jobs/${item.job_id}/image" alt="Meme" loading="lazy"
+                    onerror="this.parentElement.innerHTML='<div class=\\'card-placeholder\\'>Failed to load</div>'" />`
+            : `<div class="card-placeholder">${item.status}</div>`
+          }
+        </div>
+        <div class="card-footer">
+          <span class="card-date">${fmtDate(item.created_at)}</span>
+          <span class="status-badge status-${item.status}">${item.status}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── Lightbox ──────────────────────────────────────────────────────────────
+  function openLightbox(jobId, card) {
+    const status = card.dataset.status;
+    if (status !== 'done') return;
+
+    const lb  = document.getElementById('lightbox');
+    const img = document.getElementById('lb-img');
+    img.src = `${API}/jobs/${jobId}/image`;
+    lb.classList.add('active');
+
+    document.getElementById('lb-download').onclick = () => {
+      const a = document.createElement('a');
+      a.href     = img.src;
+      a.download = `${jobId}.png`;
+      a.click();
+    };
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.getElementById('lb-img').src = '';
+  }
+
+  // Close on backdrop click
+  document.getElementById('lightbox').addEventListener('click', e => {
+    if (e.target === document.getElementById('lightbox')) closeLightbox();
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLightbox();
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadPage();
+</script>
+
+<!-- ── Floating create panel ── -->
+<div id="fab-root">
+  <div id="fab-panel">
+    <div class="fp-header">
+      <span class="fp-title">Create Meme</span>
+      <div class="fp-header-btns">
+        <button class="fp-reset-btn" onclick="fabReset()">Reset</button>
+        <button class="fp-close-btn" onclick="fabClose()" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div id="fp-form">
+      <!-- Manual: two columns -->
+      <div id="fp-manual-cols" class="fp-cols">
+        <div class="fp-col fp-virgin-col">
+          <div class="fp-col-head">The Virgin</div>
+          <input class="fp-input" id="fp-virgin" type="text" placeholder="e.g. Linux user" autocomplete="off" />
+          <p class="fp-hint">Traits — one per line</p>
+          <textarea class="fp-labels" id="fp-virgin-labels" placeholder="Uses the terminal&#10;No social life&#10;..."></textarea>
+        </div>
+        <div class="fp-col fp-chad-col">
+          <div class="fp-col-head">The Chad</div>
+          <input class="fp-input" id="fp-chad" type="text" placeholder="e.g. Windows user" autocomplete="off" />
+          <p class="fp-hint">Traits — one per line</p>
+          <textarea class="fp-labels" id="fp-chad-labels" placeholder="Just works&#10;Gaming ready&#10;..."></textarea>
+        </div>
+      </div>
+
+      <!-- OR divider -->
+      <div class="fp-or-row">
+        <div class="fp-or-line"></div>
+        <span class="fp-or-text">or describe it in plain words — AI fills the form</span>
+        <div class="fp-or-line"></div>
+      </div>
+
+      <!-- LLM section -->
+      <div id="fp-llm-wrap">
+        <textarea class="fp-freestyle" id="fp-freestyle"
+          placeholder='e.g. "virgin python dev vs chad rust programmer" or just "tabs vs spaces" — AI handles the rest'></textarea>
+        <div class="fp-llm-row">
+          <span class="fp-llm-hint">Optional pre-step: describe the meme idea casually and let AI fill the fields above.</span>
+          <button class="fp-parse-btn" id="fp-parse-btn" onclick="fabParse()">✨ Parse</button>
+        </div>
+        <p class="fp-parse-error" id="fp-parse-error" style="display:none"></p>
+      </div>
+
+      <button class="fp-submit" id="fp-submit" onclick="fabSubmit()" disabled>Generate Meme</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="fp-loading" style="display:none">
+      <div class="fp-spinner"></div>
+      <p class="fp-load-text">Generating your meme…</p>
+      <p class="fp-load-timer" id="fp-load-timer"></p>
+    </div>
+
+    <!-- Result -->
+    <div id="fp-result" style="display:none">
+      <img id="fp-result-img" alt="Generated meme" />
+      <div class="fp-res-actions">
+        <button class="fp-res-btn fp-res-dl" id="fp-res-dl">Download</button>
+        <button class="fp-res-btn fp-res-another" onclick="fabReset()">Generate Another</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="fab-btn" onclick="fabToggle()">+ Create New Meme</button>
+</div>
+
+<script>
+  // ── FAB state ──────────────────────────────────────────────────────────────
+  // Modes: null (clean) | 'manual' (typing in form) | 'llm' (typing in freestyle)
+  //        | 'parsed' (AI filled the form — manual editable, freestyle locked)
+  let fabMode    = null;
+  let fabPollT   = null;
+  let fabElapT   = null;
+  let fabBlobUrl = null;
+
+  const MAN_IDS = ['fp-virgin', 'fp-virgin-labels', 'fp-chad', 'fp-chad-labels'];
+
+  // ── Open / close ───────────────────────────────────────────────────────────
+  function fabToggle() {
+    const open = document.getElementById('fab-panel').classList.toggle('open');
+    document.getElementById('fab-btn').textContent = open ? '✕ Close' : '+ Create New Meme';
+  }
+  function fabClose() {
+    document.getElementById('fab-panel').classList.remove('open');
+    document.getElementById('fab-btn').textContent = '+ Create New Meme';
+  }
+
+  // ── Reset ──────────────────────────────────────────────────────────────────
+  function fabReset() {
+    fabMode = null;
+    clearInterval(fabPollT);
+    clearInterval(fabElapT);
+    if (fabBlobUrl) { URL.revokeObjectURL(fabBlobUrl); fabBlobUrl = null; }
+    MAN_IDS.forEach(id => document.getElementById(id).value = '');
+    document.getElementById('fp-freestyle').value = '';
+    const btn = document.getElementById('fp-parse-btn');
+    btn.disabled = false;
+    btn.textContent = '✨ Parse';
+    const errEl = document.getElementById('fp-parse-error');
+    errEl.style.display = 'none';
+    errEl.textContent = '';
+    document.getElementById('fp-form').style.display    = '';
+    document.getElementById('fp-loading').style.display = 'none';
+    document.getElementById('fp-result').style.display  = 'none';
+    fabSyncUI();
+  }
+
+  // ── Input listeners ────────────────────────────────────────────────────────
+  MAN_IDS.forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      // In llm/parsed mode the manual cols are locked (pointer-events:none),
+      // so this fires only when mode is null or manual.
+      fabMode = MAN_IDS.some(fid => document.getElementById(fid).value.trim()) ? 'manual' : null;
+      fabSyncUI();
+    });
+  });
+
+  document.getElementById('fp-freestyle').addEventListener('input', () => {
+    // In manual/parsed mode the llm wrap is locked, so this only fires for null/llm.
+    const val = document.getElementById('fp-freestyle').value.trim();
+    fabMode = val ? 'llm' : null;
+    fabSyncUI();
+  });
+
+  // ── Sync UI to current mode ────────────────────────────────────────────────
+  function fabSyncUI() {
+    // Lock whichever section is inactive
+    document.getElementById('fp-manual-cols')
+      .classList.toggle('fp-locked', fabMode === 'llm');
+    document.getElementById('fp-llm-wrap')
+      .classList.toggle('fp-locked', fabMode === 'manual' || fabMode === 'parsed');
+
+    // Submit enabled only when both names are filled AND in a submittable mode
+    const virgin = document.getElementById('fp-virgin').value.trim();
+    const chad   = document.getElementById('fp-chad').value.trim();
+    document.getElementById('fp-submit').disabled =
+      !(virgin && chad && (fabMode === 'manual' || fabMode === 'parsed'));
+  }
+
+  // ── Parse (LLM pre-step) ───────────────────────────────────────────────────
+  async function fabParse() {
+    const text = document.getElementById('fp-freestyle').value.trim();
+    if (!text) return;
+
+    const btn   = document.getElementById('fp-parse-btn');
+    const errEl = document.getElementById('fp-parse-error');
+    btn.disabled    = true;
+    btn.textContent = 'Parsing…';
+    errEl.style.display = 'none';
+
+    try {
+      const res = await fetch(`${API}/parse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(e.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      // Fill the manual form with parsed data
+      document.getElementById('fp-virgin').value        = data.virgin || '';
+      document.getElementById('fp-chad').value          = data.chad   || '';
+      document.getElementById('fp-virgin-labels').value = (data.virgin_labels || []).join('\n');
+      document.getElementById('fp-chad-labels').value   = (data.chad_labels   || []).join('\n');
+
+      btn.textContent = '✓ Parsed';
+      fabMode = 'parsed'; // lock freestyle, unlock manual for tweaks
+      fabSyncUI();
+    } catch (err) {
+      btn.disabled    = false;
+      btn.textContent = '✨ Parse';
+      errEl.textContent   = err.message;
+      errEl.style.display = '';
+    }
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  async function fabSubmit() {
+    const virgin = document.getElementById('fp-virgin').value.trim();
+    const chad   = document.getElementById('fp-chad').value.trim();
+    if (!virgin || !chad) return;
+
+    const virginLabels = document.getElementById('fp-virgin-labels').value
+      .split('\n').map(l => l.trim()).filter(Boolean);
+    const chadLabels = document.getElementById('fp-chad-labels').value
+      .split('\n').map(l => l.trim()).filter(Boolean);
+
+    document.getElementById('fp-form').style.display    = 'none';
+    document.getElementById('fp-loading').style.display = 'flex';
+
+    let secs = 0;
+    document.getElementById('fp-load-timer').textContent = '';
+    clearInterval(fabElapT);
+    fabElapT = setInterval(() => {
+      document.getElementById('fp-load-timer').textContent = `${++secs}s elapsed`;
+    }, 1000);
+
+    try {
+      const body = { virgin, chad };
+      if (virginLabels.length) body.virgin_labels = virginLabels;
+      if (chadLabels.length)   body.chad_labels   = chadLabels;
+
+      const res = await fetch(`${API}/generate/raw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(e.detail || `HTTP ${res.status}`);
+      }
+      const { job_id } = await res.json();
+      clearInterval(fabPollT);
+      fabPollT = setInterval(() => fabPoll(job_id), 3000);
+      fabPoll(job_id);
+    } catch (err) {
+      clearInterval(fabElapT);
+      document.getElementById('fp-loading').style.display = 'none';
+      document.getElementById('fp-form').style.display    = '';
+      alert(`Error: ${err.message}`);
+    }
+  }
+
+  // ── Poll job ───────────────────────────────────────────────────────────────
+  async function fabPoll(job_id) {
+    try {
+      const data = await fetch(`${API}/jobs/${job_id}`).then(r => r.json());
+      if (data.status === 'done') {
+        clearInterval(fabPollT);
+        clearInterval(fabElapT);
+        const blob = await fetch(`${API}/jobs/${job_id}/image`).then(r => r.blob());
+        if (fabBlobUrl) URL.revokeObjectURL(fabBlobUrl);
+        fabBlobUrl = URL.createObjectURL(blob);
+        document.getElementById('fp-result-img').src = fabBlobUrl;
+        document.getElementById('fp-res-dl').onclick = () => {
+          Object.assign(document.createElement('a'),
+            { href: fabBlobUrl, download: `${job_id}.png` }).click();
+        };
+        document.getElementById('fp-loading').style.display = 'none';
+        document.getElementById('fp-result').style.display  = 'flex';
+        loadPage(); // refresh the gallery grid
+      } else if (data.status === 'failed') {
+        clearInterval(fabPollT);
+        clearInterval(fabElapT);
+        document.getElementById('fp-loading').style.display = 'none';
+        document.getElementById('fp-form').style.display    = '';
+        alert(`Generation failed: ${data.error || 'unknown error'}`);
+      }
+    } catch (err) {
+      clearInterval(fabPollT);
+      clearInterval(fabElapT);
+      document.getElementById('fp-loading').style.display = 'none';
+      document.getElementById('fp-form').style.display    = '';
+      alert(`Error polling job: ${err.message}`);
+    }
+  }
+</script>
+
+</body>
+</html>
