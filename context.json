@@ -15,9 +15,9 @@
     "facial_structure_locked": true,
     "skin_tone_change_allowed": true,
     "hair_change_allowed": true,
-    "no_style_improvement": true,
     "no_realism": true,
-    "flat_colors_only": true
+    "style_varies_per_generation": true,
+    "note": "Art style, colours, lettering, and label layout are intentionally varied per generation to feel organic and handmade."
   },
 
   "label_rules": {
@@ -155,6 +155,6 @@
   "prompt_templates": {
     "reskin_prompt": "Use the standard Virgin vs Chad base template image as the ONLY layout reference.\nABSOLUTE LOCKS: pose, composition, background, camera framing, facial expressions, and facial proportions must remain IDENTICAL to the base template. Do not alter body posture, head tilt, limb position, or face shape in any way.\n\nStyle must remain intentionally ugly, flat, low-fidelity, sketchy, and meme-like. No polish, no realism, no shading gradients, no texture detail. Flat colors only.\n\nLEFT CHARACTER (Virgin):\n- Archetype: {virgin_name}\n- Allowed changes only: clothing, props, accessories, hair, skin tone\n- Traits/notes: {virgin_traits}\n- Facial structure and expression must remain unchanged from the base template\n\nRIGHT CHARACTER (Chad):\n- Archetype: {chad_name}\n- Allowed changes only: clothing, props, accessories, hair, skin tone\n- Traits/notes: {chad_traits}\n- Facial structure and expression must remain unchanged from the base template\n\nTEXT REQUIREMENTS:\n- Render title text above each character\n- EXACT text:\n  - Above left character: \"Virgin {virgin_name}\"\n  - Above right character: \"Chad {chad_name}\"\n- Title text must not overlap heads or faces\n- Use plain, simple lettering (no polish, no decoration)\n- Text must not dominate the image\n\nDo not add any additional text.\nDo not alter the background.\nThis is the FIRST image pass only.",
 
-    "annotation_prompt": "Do NOT modify the image content in any way.\nDo NOT change pose, faces, bodies, clothing, props, colors, or background.\nPreserve the previously rendered title text exactly as-is.\n\nAdd body text annotations only.\n\nFONT & STYLE:\n- Font: Arial only\n- Color: black\n- Plain, unstyled text\n- No bold, no italics, no outlines, no shadows\n\nPLACEMENT RULES:\n- Diagram-style layout\n- Left-side text stays entirely on the left half\n- Right-side text stays entirely on the right half\n- Labels must be spatially distributed around the character silhouette\n- Do NOT stack labels into a single vertical column\n- Spread labels near head, torso, and legs\n- Use inward and outward offsets to fill empty space\n- Avoid large empty gaps between text and characters\n\nLEFT (Virgin {virgin_name}) — add 5–8 labels (prefer fewer unless more are clearly justified):\n{virgin_labels}\n\nRIGHT (Chad {chad_name}) — add 5–8 labels (prefer fewer unless more are clearly justified):\n{chad_labels}\n\nDo not paraphrase, rewrite, or invent any text.\nAdd no additional labels beyond those listed."
+    "annotation_prompt": "Do NOT modify the image content in any way.\nDo NOT change pose, faces, bodies, clothing, props, colors, or background.\nPreserve the previously rendered title text exactly as-is.\n\nAdd body text annotations only.\n\nFONT & STYLE:\n- Font and text style are specified per generation in the style instructions\n- Color: black\n- Match the overall handmade feel of the image\n\nPLACEMENT RULES:\n- Diagram-style layout\n- Left-side text stays entirely on the left half\n- Right-side text stays entirely on the right half\n- Label distribution pattern is specified per generation in the style instructions\n- Do NOT stack labels into a single vertical column\n\nLEFT (Virgin {virgin_name}) — add 5–8 labels (prefer fewer unless more are clearly justified):\n{virgin_labels}\n\nRIGHT (Chad {chad_name}) — add 5–8 labels (prefer fewer unless more are clearly justified):\n{chad_labels}\n\nDo not paraphrase, rewrite, or invent any text.\nAdd no additional labels beyond those listed."
   }
 }

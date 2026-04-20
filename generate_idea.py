@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import random
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,6 +26,66 @@ IDEAS_FILE = os.environ.get("IDEAS_FILE", "ideas.json")
 
 MIN_LABELS = 5
 MAX_LABELS = 8
+
+# ======================
+# STYLE RANDOMISATION
+# ======================
+
+_ART_STYLES = [
+    "extremely rough hand-drawn pencil sketch feel — uneven wobbly lines, scratchy cross-hatching in shadows, nothing is straight",
+    "MS Paint tier — thick jagged outlines, solid block fills, zero anti-aliasing, colours slightly off-model like someone used the paint bucket wrong",
+    "crude marker drawing — thick felt-tip outlines with visible stroke direction, some areas filled with hasty overlapping strokes, not clean at all",
+    "mid-2000s DeviantArt fan-art energy — slightly cleaner than pure scribble but still flat and obviously meme-tier, soft outlines",
+    "quick ballpoint pen doodle on lined paper feel — thin scratchy lines, minimal fill, some areas just left white, very impatient energy",
+    "Microsoft Word clip-art meets meme — overly smooth outlines but comically off-proportion, fills too saturated, everything slightly wrong",
+]
+
+_TITLE_STYLES = [
+    "bold all-caps Impact-style font, titles slightly different sizes on each side as if typed separately",
+    "chunky hand-lettered block capitals, slightly uneven baseline, letters not perfectly spaced",
+    "comic-book style bold lettering, slightly slanted, thick black outline around the text",
+    "plain sans-serif but sized inconsistently — one side's title noticeably bigger than the other",
+    "scratchy hand-written capitals, not horizontal, one word slightly higher than the next",
+    "big bold text but clearly done in two different 'handwriting' styles — like two people labelled their own side",
+]
+
+_LABEL_TEXT_STYLES = [
+    "all labels in small plain text, connected by thin straight lines with a tiny arrowhead",
+    "labels in slightly varying font sizes — some bigger for emphasis, no consistent sizing, feels unplanned",
+    "labels in a slightly cramped handwritten style, lines are freehand and wobbly, not ruler-straight",
+    "mix of short and long pointer lines, some labels far from the character, some nearly touching it",
+    "no pointer lines at all — labels just float near the relevant body part with implied proximity",
+    "labels in a slightly bold style, pointer lines with a small dot at the character end instead of an arrow",
+]
+
+_LABEL_LAYOUTS = [
+    "most labels clustered around the upper body and head, only one or two near the feet",
+    "evenly spread head-to-toe on both sides, labels at roughly equal vertical intervals",
+    "more labels near the head and feet, fewer around the torso — sparse in the middle",
+    "asymmetric — virgin side labels mostly on the left outer edge, chad side labels closer in and scattered",
+    "labels spread wide outward, the outermost ones almost at the image edge, creating a diagram-like exploded view",
+    "dense near the torso, with labels slightly overlapping each other's pointer lines — crowded, organic feel",
+]
+
+_COLOR_APPROACHES = [
+    "flat solid colours, fairly saturated and slightly garish — too many colours, no restraint",
+    "limited palette: only 3–4 colours per character, feels like someone ran out of markers",
+    "muted desaturated colours, slightly washed out, like printed on bad paper",
+    "bright oversaturated fills, almost neon in places — definitely chosen by someone who loved the colour wheel",
+    "mostly flat but with a single rough shadow colour per character, added as a solid dark shape, no blending",
+]
+
+
+def pick_style() -> dict:
+    """Randomly select one option per style dimension for this generation."""
+    return {
+        "art_style":        random.choice(_ART_STYLES),
+        "title_style":      random.choice(_TITLE_STYLES),
+        "label_text_style": random.choice(_LABEL_TEXT_STYLES),
+        "label_layout":     random.choice(_LABEL_LAYOUTS),
+        "color_approach":   random.choice(_COLOR_APPROACHES),
+    }
+
 
 SYSTEM_PROMPT = """You generate Virgin vs Chad meme prompts.
 
@@ -90,6 +151,7 @@ def generate_reskin_prompt(
     context: str,
     virgin: str,
     chad: str,
+    style: dict,
 ) -> str:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -107,18 +169,20 @@ REQUIREMENTS:
 - Absolute pose, face, and composition locks
 - Facial proportions and expressions must remain IDENTICAL
 - Concrete, drawable clothing, props, accessories, and cosmetic modifications ONLY
-- Mandatory flat color fills (no black-and-white, no grayscale)
-- Intentionally ugly, flat, sketchy, meme-like style
 - Balanced negative space on BOTH sides for later text placement
 - Avoid crowding the center gap between characters
+
+STYLE FOR THIS GENERATION (follow these specifically — they define the organic feel):
+- Art style: {style["art_style"]}
+- Colour approach: {style["color_approach"]}
 
 TEXT REQUIREMENTS:
 - Render title text above each character
 - EXACT text:
   - "Virgin {virgin}"
   - "Chad {chad}"
+- Title lettering style: {style["title_style"]}
 - Title text must not overlap heads or faces
-- Plain, simple lettering only (no polish)
 
 Do NOT add any additional text.
 Do NOT alter the background.
@@ -204,6 +268,7 @@ def generate_annotation_prompt(
     chad: str,
     virgin_labels: List[str],
     chad_labels: List[str],
+    style: dict,
 ) -> str:
     def label_instruction(side: str, labels: List[str]) -> str:
         if not labels:
@@ -211,7 +276,6 @@ def generate_annotation_prompt(
                 f"- Generate {MIN_LABELS}–{MAX_LABELS} labels.\n"
                 f"- Prefer fewer labels unless more are clearly justified."
             )
-
 
         if len(labels) >= MIN_LABELS:
             return (
@@ -238,13 +302,15 @@ Write the FULL Nanobanana TEXT-ANNOTATION PROMPT for the SECOND image pass.
 ABSOLUTE RULES:
 - Do NOT modify the image content
 - Preserve title text exactly
-- Arial font only, black text
+- Black text
+
+STYLE FOR THIS GENERATION (carry these through from the first pass):
+- Label text style: {style["label_text_style"]}
+- Label spatial layout: {style["label_layout"]}
 
 LAYOUT:
-- Diagram-style
-- Labels distributed around head / torso / legs
-- NO single vertical column
 - Left stays left, right stays right
+- Do NOT stack all labels into a single vertical column
 
 VIRGIN LABELS:
 {label_instruction("virgin", virgin_labels)}
@@ -306,9 +372,12 @@ def generate_idea(
     base_dir = Path(__file__).parent
     context = load_text(base_dir / CONTEXT_FILE)
 
+    style = pick_style()
+    print(f"Style: art={style['art_style'][:40]}… | title={style['title_style'][:40]}…")
+
     print("Generating reskin prompt…")
     reskin_prompt = generate_reskin_prompt(
-        client, context, virgin, chad
+        client, context, virgin, chad, style
     )
 
     print("Resolving full label lists…")
@@ -318,7 +387,7 @@ def generate_idea(
 
     print("Generating annotation prompt…")
     annotation_prompt = generate_annotation_prompt(
-        client, context, virgin, chad, full_virgin_labels, full_chad_labels
+        client, context, virgin, chad, full_virgin_labels, full_chad_labels, style
     )
 
     idea = {
@@ -327,6 +396,7 @@ def generate_idea(
         "annotation_prompt": annotation_prompt,
         "virgin_labels": full_virgin_labels,
         "chad_labels": full_chad_labels,
+        "style": style,
     }
 
     # Use IDEAS_FILE which may be overridden by environment variable
