@@ -131,20 +131,28 @@ def force_image_prompt(prompt: str) -> str:
     )
 
 
-def force_annotation_prompt(prompt: str) -> str:
+def build_annotation_prompt(idea: dict) -> str:
     """
-    Pass 2 wrapper. Overrides the 'do not modify' framing in annotation prompts —
-    Gemini latches onto that and returns an unlabelled copy. This reframes the task
-    as 'add text' rather than 'preserve image', while keeping both true.
+    Build a simple, direct Pass 2 prompt from the idea's label data.
+    Avoids the heavily structured GPT-generated annotation_prompt which causes
+    Gemini to return MALFORMED_FUNCTION_CALL due to its schema-like formatting.
     """
+    virgin_labels = idea.get("virgin_labels", [])
+    chad_labels = idea.get("chad_labels", [])
+
+    v_lines = "\n".join(f"- {l}" for l in virgin_labels)
+    c_lines = "\n".join(f"- {l}" for l in chad_labels)
+
     return (
-        "OUTPUT REQUIREMENT:\n"
-        "You MUST output an IMAGE with every listed text label drawn onto it.\n"
-        "Adding the callout labels IS your task — the image is not complete without them.\n"
-        "Do not return the image unchanged. Every single label must be visible.\n\n"
-        + prompt.strip()
-        + "\n\nFINAL CHECK: every label listed above must appear in the output image. "
-        "An image with missing labels is a failed output."
+        "Add callout text labels to this image. "
+        "Do not change the drawing, characters, colours, or background — only add text.\n\n"
+        "Left character — place these labels on the left side of the image with thin pointer lines pointing at the relevant body part. "
+        "Distribute them from head to feet, not in a single column:\n"
+        f"{v_lines}\n\n"
+        "Right character — place these labels on the right side of the image with thin pointer lines pointing at the relevant body part. "
+        "Distribute them from head to feet, not in a single column:\n"
+        f"{c_lines}\n\n"
+        "Use small black text. Every label must appear. Output the image with all labels added."
     )
 
 
@@ -243,9 +251,7 @@ def main():
                 reskin_prompt = force_image_prompt(
                     require_prompt(idea, "reskin_prompt")
                 )
-                annotation_prompt = force_annotation_prompt(
-                    require_prompt(idea, "annotation_prompt")
-                )
+                annotation_prompt = build_annotation_prompt(idea)
                 logging.debug(f"  Prompts validated")
 
                 # ------------------
