@@ -378,9 +378,18 @@ async def job_status(job_id: str):
     """Poll for job status. status: processing | done | failed"""
     with _jobs_lock:
         job = _jobs.get(job_id)
-    if not job:
+    if job:
+        return {"job_id": job_id, "status": job["status"], "error": job["error"]}
+
+    # In-memory store is empty after a restart — fall back to SQLite.
+    con = sqlite3.connect(DB_PATH)
+    row = con.execute(
+        "SELECT status FROM memes WHERE job_id=?", (job_id,)
+    ).fetchone()
+    con.close()
+    if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"job_id": job_id, "status": job["status"], "error": job["error"]}
+    return {"job_id": job_id, "status": row[0], "error": None}
 
 
 @app.get("/jobs/{job_id}/image", response_class=FileResponse)
@@ -388,8 +397,25 @@ async def job_image(job_id: str):
     """Fetch the generated image once status is done."""
     with _jobs_lock:
         job = dict(_jobs.get(job_id, {}))
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        # Fall back to SQLite + filesystem after a restart.
+        con = sqlite3.connect(DB_PATH)
+        row = con.execute(
+            "SELECT status FROM memes WHERE job_id=?", (job_id,)
+        ).fetchone()
+        con.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if row[0] != "done":
+            raise HTTPException(status_code=202, detail="Job not ready")
+        out_dir = Path(__file__).parent / "jobs" / job_id / "out"
+        images = list(out_dir.glob("*.png")) if out_dir.exists() else []
+        if not images:
+            raise HTTPException(status_code=404, detail="Image not found")
+        p = max(images, key=lambda img: img.stat().st_mtime)
+        return FileResponse(path=str(p), media_type="image/png", filename=p.name)
+
     if job["status"] != "done":
         raise HTTPException(status_code=202, detail="Job not ready")
     p = Path(job["image_path"])
