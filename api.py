@@ -43,6 +43,43 @@ def _init_db():
             completed_at REAL
         )
     """)
+    for col, typedef in [("wallet", "TEXT"), ("signature", "TEXT")]:
+        try:
+            con.execute(f"ALTER TABLE memes ADD COLUMN {col} {typedef}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    old_schema = con.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='votes'"
+    ).fetchone()
+    needs_migration = old_schema and "PRIMARY KEY (job_id, wallet)" not in old_schema[0]
+    if needs_migration:
+        # Dedupe to earliest vote per (job_id, wallet), then rebuild with unique PK.
+        con.execute("ALTER TABLE votes RENAME TO votes_old")
+        con.execute("""
+            CREATE TABLE votes (
+                job_id     TEXT NOT NULL,
+                wallet     TEXT NOT NULL,
+                signature  TEXT,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (job_id, wallet)
+            )
+        """)
+        con.execute(
+            "INSERT OR IGNORE INTO votes (job_id, wallet, signature, created_at) "
+            "SELECT job_id, wallet, signature, MIN(created_at) "
+            "FROM votes_old GROUP BY job_id, wallet"
+        )
+        con.execute("DROP TABLE votes_old")
+    else:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS votes (
+                job_id     TEXT NOT NULL,
+                wallet     TEXT NOT NULL,
+                signature  TEXT,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (job_id, wallet)
+            )
+        """)
     con.commit()
     con.close()
 
@@ -84,11 +121,15 @@ class MemeRequestRaw(BaseModel):
     chad: str = Field(..., min_length=1)
     virgin_labels: Optional[List[str]] = Field(default=None, max_items=12)
     chad_labels: Optional[List[str]] = Field(default=None, max_items=12)
+    wallet: Optional[str] = None
+    signature: Optional[str] = None
 
 
 class MemeRequestFreestyle(BaseModel):
     """FREESTYLE request — any natural-language text describing the two archetypes."""
     text: str = Field(..., min_length=1, max_length=500)
+    wallet: Optional[str] = None
+    signature: Optional[str] = None
 
 
 class MemeParseRequest(BaseModel):
@@ -108,15 +149,15 @@ def _new_job_id() -> str:
     return f"api_{int(time.time() * 1000)}"
 
 
-def _submit_job(virgin, chad, virgin_labels, chad_labels) -> str:
+def _submit_job(virgin, chad, virgin_labels, chad_labels, wallet=None, signature=None) -> str:
     job_id = _new_job_id()
     now = time.time()
     with _jobs_lock:
-        _jobs[job_id] = {"status": "processing", "image_path": None, "error": None}
+        _jobs[job_id] = {"status": "processing", "image_path": None, "error": None, "wallet": wallet}
     con = sqlite3.connect(DB_PATH)
     con.execute(
-        "INSERT INTO memes (job_id, status, created_at) VALUES (?, 'processing', ?)",
-        (job_id, now)
+        "INSERT INTO memes (job_id, status, created_at, wallet, signature) VALUES (?, 'processing', ?, ?, ?)",
+        (job_id, now, wallet, signature)
     )
     con.commit()
     con.close()
@@ -270,6 +311,7 @@ async def generate_raw(request: MemeRequestRaw):
     job_id = _submit_job(
         request.virgin, request.chad,
         request.virgin_labels, request.chad_labels,
+        request.wallet, request.signature,
     )
     return {"job_id": job_id, "status": "processing"}
 
@@ -356,6 +398,7 @@ async def generate_freestyle(request: MemeRequestFreestyle):
         parsed["virgin"], parsed["chad"],
         parsed["virgin_labels"] or None,
         parsed["chad_labels"] or None,
+        request.wallet, request.signature,
     )
     return {"job_id": job_id, "status": "processing", "parsed": parsed}
 
@@ -379,17 +422,44 @@ async def job_status(job_id: str):
     with _jobs_lock:
         job = _jobs.get(job_id)
     if job:
-        return {"job_id": job_id, "status": job["status"], "error": job["error"]}
+        return {"job_id": job_id, "status": job["status"], "error": job["error"], "wallet": job.get("wallet")}
 
     # In-memory store is empty after a restart — fall back to SQLite.
     con = sqlite3.connect(DB_PATH)
     row = con.execute(
-        "SELECT status FROM memes WHERE job_id=?", (job_id,)
+        "SELECT status, wallet FROM memes WHERE job_id=?", (job_id,)
     ).fetchone()
     con.close()
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"job_id": job_id, "status": row[0], "error": None}
+    return {"job_id": job_id, "status": row[0], "error": None, "wallet": row[1]}
+
+
+class VoteRequest(BaseModel):
+    wallet: str = Field(..., min_length=1)
+    signature: Optional[str] = None
+
+
+@app.post("/jobs/{job_id}/vote")
+async def vote_meme(job_id: str, request: VoteRequest):
+    """Cast a vote. One vote per wallet per meme; duplicate is a silent no-op."""
+    con = sqlite3.connect(DB_PATH)
+    try:
+        row = con.execute("SELECT 1 FROM memes WHERE job_id=?", (job_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Job not found")
+        cur = con.execute(
+            "INSERT OR IGNORE INTO votes (job_id, wallet, signature, created_at) VALUES (?, ?, ?, ?)",
+            (job_id, request.wallet, request.signature, time.time()),
+        )
+        con.commit()
+        already_voted = cur.rowcount == 0
+        vote_count = con.execute(
+            "SELECT COUNT(*) FROM votes WHERE job_id=?", (job_id,)
+        ).fetchone()[0]
+    finally:
+        con.close()
+    return {"job_id": job_id, "vote_count": vote_count, "already_voted": already_voted}
 
 
 @app.get("/jobs/{job_id}/image", response_class=FileResponse)
@@ -469,20 +539,28 @@ async def list_memes(
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     try:
+        vote_join = (
+            "LEFT JOIN (SELECT job_id, COUNT(*) AS vote_count FROM votes GROUP BY job_id) v "
+            "ON memes.job_id = v.job_id "
+        )
         if status:
             total = con.execute(
                 "SELECT COUNT(*) FROM memes WHERE status=?", (status,)
             ).fetchone()[0]
             rows = con.execute(
-                "SELECT job_id, meme_id, status, created_at, completed_at "
-                "FROM memes WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT memes.job_id, meme_id, status, memes.created_at, completed_at, memes.wallet, "
+                "COALESCE(v.vote_count, 0) AS vote_count "
+                "FROM memes " + vote_join +
+                "WHERE status=? ORDER BY memes.created_at DESC LIMIT ? OFFSET ?",
                 (status, limit, offset)
             ).fetchall()
         else:
             total = con.execute("SELECT COUNT(*) FROM memes").fetchone()[0]
             rows = con.execute(
-                "SELECT job_id, meme_id, status, created_at, completed_at "
-                "FROM memes ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT memes.job_id, meme_id, status, memes.created_at, completed_at, memes.wallet, "
+                "COALESCE(v.vote_count, 0) AS vote_count "
+                "FROM memes " + vote_join +
+                "ORDER BY memes.created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset)
             ).fetchall()
     finally:
@@ -495,6 +573,8 @@ async def list_memes(
             "status": r["status"],
             "created_at": _ts_to_iso(r["created_at"]),
             "completed_at": _ts_to_iso(r["completed_at"]),
+            "wallet": r["wallet"],
+            "vote_count": r["vote_count"],
         }
         for r in rows
     ]
@@ -505,6 +585,44 @@ async def list_memes(
         "limit": limit,
         "has_next": offset + limit < total,
         "has_prev": page > 1,
+    }
+
+
+# =========================
+# Leaderboard
+# =========================
+
+@app.get("/leaderboard")
+async def leaderboard(limit: int = Query(default=15, ge=1, le=50)):
+    """Top voted memes (user-generated, done only), ordered by votes desc then oldest first."""
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            "SELECT memes.job_id, meme_id, memes.wallet, memes.created_at, "
+            "COALESCE(v.vote_count, 0) AS vote_count "
+            "FROM memes "
+            "LEFT JOIN (SELECT job_id, COUNT(*) AS vote_count FROM votes GROUP BY job_id) v "
+            "ON memes.job_id = v.job_id "
+            "WHERE memes.wallet IS NOT NULL AND memes.status = 'done' AND v.vote_count > 0 "
+            "ORDER BY vote_count DESC, memes.created_at ASC "
+            "LIMIT ?",
+            (limit,)
+        ).fetchall()
+    finally:
+        con.close()
+
+    return {
+        "items": [
+            {
+                "job_id": r["job_id"],
+                "meme_id": r["meme_id"],
+                "wallet": r["wallet"],
+                "vote_count": r["vote_count"],
+                "created_at": _ts_to_iso(r["created_at"]),
+            }
+            for r in rows
+        ]
     }
 
 
