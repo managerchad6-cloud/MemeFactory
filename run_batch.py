@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import re
 import time
@@ -91,6 +92,17 @@ def extract_and_save_image(response, out_path: Path) -> bool:
     logging.debug(f"Attempting to extract image to {out_path}")
 
     for cand_idx, cand in enumerate(response.candidates):
+        if not cand.content or not cand.content.parts:
+            finish  = getattr(cand, 'finish_reason', 'unknown')
+            ratings = getattr(cand, 'safety_ratings', None) or []
+            blocked = [str(r) for r in ratings if getattr(r, 'blocked', False)]
+            logging.warning(
+                f"  Candidate {cand_idx}: no content parts "
+                f"(finish_reason={finish}"
+                + (f", blocked={blocked}" if blocked else "")
+                + ")"
+            )
+            continue
         logging.debug(f"  Candidate {cand_idx}: {len(cand.content.parts)} parts")
         for part_idx, part in enumerate(cand.content.parts):
 
@@ -345,6 +357,7 @@ def main():
 
         if stats["failed"] > 0:
             logging.warning(f"{stats['failed']} meme(s) failed to generate")
+            sys.exit(1)
         else:
             logging.info("All memes generated successfully!")
 

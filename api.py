@@ -438,7 +438,21 @@ def _run_generation(
 
     images = list(out_dir.glob("*.png"))
     if not images:
-        raise HTTPException(status_code=500, detail="No output image found")
+        # run_batch.py exited 0 but produced no image — check its stdout/stderr
+        # and the most recent log file for the actual Gemini finish_reason.
+        detail = "No output image produced"
+        stderr_hint = (result.stderr or "").strip()
+        stdout_hint = (result.stdout or "").strip()
+        hint = stderr_hint or stdout_hint
+        if hint:
+            # pull the first WARNING/ERROR line that mentions finish_reason or blocked
+            for line in hint.splitlines():
+                if "finish_reason" in line or "blocked" in line or "SAFETY" in line or "FAILED" in line:
+                    detail = f"Generation blocked: {line.strip()}"
+                    break
+            else:
+                detail = f"No output image produced. Generator output: {hint[:300]}"
+        raise HTTPException(status_code=500, detail=detail)
 
     return max(images, key=lambda p: p.stat().st_mtime)
 
