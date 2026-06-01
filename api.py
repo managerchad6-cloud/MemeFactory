@@ -9,6 +9,8 @@ that paid >= 1 USDC to the treasury. The transaction signature is
 consumed on first use — replay attacks are rejected at the DB layer.
 """
 
+import hashlib
+import hmac
 import os
 import json
 import re
@@ -44,6 +46,9 @@ _TX_MAX_AGE    = 600        # seconds — reject transactions older than 10 minu
 # Base58 character set validation (no 0/O/I/l — classic base58 alphabet)
 _TX_SIG_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{87,88}$")
 _ADDR_RE   = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
+# Credit token shared secret — must match the Studio backend
+_CREDIT_SHARED_SECRET = os.environ.get("CREDIT_SHARED_SECRET", "vvc-credit-secret-change-me")
 
 
 # =========================
@@ -269,8 +274,36 @@ def verify_usdc_payment(tx_signature: str, wallet: str) -> tuple[bool, str]:
 
 
 # =========================
+# Credit token verification
+# =========================
+
+def verify_credit_token(token) -> bool:
+    """
+    Return True iff the credit token was issued by the Studio backend within
+    the last 5 minutes and has a valid HMAC signature.
+    Wallet-match check (token.wallet == request.wallet) is the caller's job.
+    """
+    now_ms = int(time.time() * 1000)
+    if now_ms - token.ts > 5 * 60 * 1000:
+        return False
+    expected = hmac.new(
+        _CREDIT_SHARED_SECRET.encode(),
+        f"{token.wallet}|{token.ts}|meme_generate".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, token.sig)
+
+
+# =========================
 # Models
 # =========================
+
+class CreditToken(BaseModel):
+    """Short-lived HMAC token issued by the Studio backend after deducting credits."""
+    wallet: str
+    ts:     int
+    sig:    str
+
 
 class MemeRequest(BaseModel):
     """STRICT endpoint — labels required on both sides."""
@@ -283,20 +316,22 @@ class MemeRequest(BaseModel):
 
 
 class MemeRequestRaw(BaseModel):
-    """RAW endpoint — labels optional."""
-    virgin:        str                  = Field(..., min_length=1)
-    chad:          str                  = Field(..., min_length=1)
-    virgin_labels: Optional[List[str]]  = Field(default=None, max_items=12)
-    chad_labels:   Optional[List[str]]  = Field(default=None, max_items=12)
-    tx_signature:  str                  = Field(..., min_length=1)
-    wallet:        str                  = Field(..., min_length=1)
+    """RAW endpoint — labels optional. Accepts credit_token in lieu of tx_signature."""
+    virgin:        str                   = Field(..., min_length=1)
+    chad:          str                   = Field(..., min_length=1)
+    virgin_labels: Optional[List[str]]   = Field(default=None, max_items=12)
+    chad_labels:   Optional[List[str]]   = Field(default=None, max_items=12)
+    tx_signature:  Optional[str]         = Field(default=None, min_length=1)
+    wallet:        str                   = Field(..., min_length=1)
+    credit_token:  Optional[CreditToken] = None
 
 
 class MemeRequestFreestyle(BaseModel):
-    """FREESTYLE endpoint — natural-language input, LLM parses it first."""
-    text:         str = Field(..., min_length=1, max_length=500)
-    tx_signature: str = Field(..., min_length=1)
-    wallet:       str = Field(..., min_length=1)
+    """FREESTYLE endpoint — natural-language input. Accepts credit_token in lieu of tx_signature."""
+    text:         str                   = Field(..., min_length=1, max_length=500)
+    tx_signature: Optional[str]         = Field(default=None, min_length=1)
+    wallet:       str                   = Field(..., min_length=1)
+    credit_token: Optional[CreditToken] = None
 
 
 class MemeParseRequest(BaseModel):
@@ -496,9 +531,15 @@ async def generate_strict(request: MemeRequest):
 @app.post("/generate/raw", status_code=202)
 async def generate_raw(request: MemeRequestRaw):
     """RAW — labels optional. Payment verified before generation starts."""
-    ok, err = verify_usdc_payment(request.tx_signature, request.wallet)
-    if not ok:
-        raise HTTPException(status_code=402, detail=err)
+    if request.credit_token is not None:
+        if not verify_credit_token(request.credit_token) or request.credit_token.wallet != request.wallet:
+            raise HTTPException(status_code=401, detail="Invalid or expired credit token")
+    else:
+        if not request.tx_signature:
+            raise HTTPException(status_code=402, detail="Payment required: provide tx_signature or credit_token")
+        ok, err = verify_usdc_payment(request.tx_signature, request.wallet)
+        if not ok:
+            raise HTTPException(status_code=402, detail=err)
     job_id = _submit_job(
         request.virgin, request.chad,
         request.virgin_labels, request.chad_labels,
@@ -562,9 +603,15 @@ def _parse_freestyle(text: str) -> dict:
 @app.post("/generate/freestyle", status_code=202)
 async def generate_freestyle(request: MemeRequestFreestyle):
     """FREESTYLE — natural-language input. Payment verified before generation starts."""
-    ok, err = verify_usdc_payment(request.tx_signature, request.wallet)
-    if not ok:
-        raise HTTPException(status_code=402, detail=err)
+    if request.credit_token is not None:
+        if not verify_credit_token(request.credit_token) or request.credit_token.wallet != request.wallet:
+            raise HTTPException(status_code=401, detail="Invalid or expired credit token")
+    else:
+        if not request.tx_signature:
+            raise HTTPException(status_code=402, detail="Payment required: provide tx_signature or credit_token")
+        ok, err = verify_usdc_payment(request.tx_signature, request.wallet)
+        if not ok:
+            raise HTTPException(status_code=402, detail=err)
     parsed = _parse_freestyle(request.text)
     job_id = _submit_job(
         parsed["virgin"], parsed["chad"],
