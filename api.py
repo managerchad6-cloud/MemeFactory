@@ -28,7 +28,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -346,7 +347,7 @@ class MemeParseRequest(BaseModel):
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
-_OPENAI_MODEL = "gpt-5.2"
+_GEMINI_TEXT_MODEL = "gemini-3.8-flash"
 
 
 def _new_job_id() -> str:
@@ -549,43 +550,41 @@ async def generate_raw(request: MemeRequestRaw):
 
 
 def _parse_freestyle(text: str) -> dict:
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    resp = client.chat.completions.create(
-        model=_OPENAI_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You parse Virgin vs Chad meme descriptions written by chaotic users.\n"
-                    "\n"
-                    "Your job is to extract:\n"
-                    "  1. The two archetypes (required).\n"
-                    "  2. Any labels/traits the user provided for each side (optional).\n"
-                    "\n"
-                    "INPUT RULES — the text can be anything:\n"
-                    "  - May or may not include the words 'virgin'/'chad'.\n"
-                    "  - Archetypes may be separated by 'vs', 'and', a comma, a slash, whitespace, or nothing.\n"
-                    "  - Labels may appear in parentheses, brackets, after a colon or dash, as bullet points,\n"
-                    "    inline after the name, or mixed across the line — in any order, with any punctuation.\n"
-                    "  - Typos, abbreviations, and inconsistent casing are expected.\n"
-                    "  - There may be zero labels, labels for only one side, or labels for both sides.\n"
-                    "\n"
-                    "OUTPUT — return ONLY a JSON object with these keys:\n"
-                    "  \"virgin\"        : string  — clean noun phrase, Title Case, no 'Virgin' prefix\n"
-                    "  \"chad\"          : string  — clean noun phrase, Title Case, no 'Chad' prefix\n"
-                    "  \"virgin_labels\" : array of strings  — traits for the virgin side ([] if none found)\n"
-                    "  \"chad_labels\"   : array of strings  — traits for the chad side ([] if none found)\n"
-                    "\n"
-                    "Label strings should be short, clean phrases as the user intended them.\n"
-                    "Do NOT invent labels that weren't in the input.\n"
-                    "If you cannot identify two distinct archetypes, return {\"error\": \"<reason>\"}."
-                ),
-            },
-            {"role": "user", "content": text},
-        ],
-        response_format={"type": "json_object"},
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    system_instruction = (
+        "You parse Virgin vs Chad meme descriptions written by chaotic users.\n"
+        "\n"
+        "Your job is to extract:\n"
+        "  1. The two archetypes (required).\n"
+        "  2. Any labels/traits the user provided for each side (optional).\n"
+        "\n"
+        "INPUT RULES — the text can be anything:\n"
+        "  - May or may not include the words 'virgin'/'chad'.\n"
+        "  - Archetypes may be separated by 'vs', 'and', a comma, a slash, whitespace, or nothing.\n"
+        "  - Labels may appear in parentheses, brackets, after a colon or dash, as bullet points,\n"
+        "    inline after the name, or mixed across the line — in any order, with any punctuation.\n"
+        "  - Typos, abbreviations, and inconsistent casing are expected.\n"
+        "  - There may be zero labels, labels for only one side, or labels for both sides.\n"
+        "\n"
+        "OUTPUT — return ONLY a JSON object with these keys:\n"
+        "  \"virgin\"        : string  — clean noun phrase, Title Case, no 'Virgin' prefix\n"
+        "  \"chad\"          : string  — clean noun phrase, Title Case, no 'Chad' prefix\n"
+        "  \"virgin_labels\" : array of strings  — traits for the virgin side ([] if none found)\n"
+        "  \"chad_labels\"   : array of strings  — traits for the chad side ([] if none found)\n"
+        "\n"
+        "Label strings should be short, clean phrases as the user intended them.\n"
+        "Do NOT invent labels that weren't in the input.\n"
+        "If you cannot identify two distinct archetypes, return {\"error\": \"<reason>\"}."
     )
-    data = json.loads(resp.choices[0].message.content)
+    resp = client.models.generate_content(
+        model=_GEMINI_TEXT_MODEL,
+        contents=text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+        ),
+    )
+    data = json.loads(resp.text)
     if "error" in data:
         raise HTTPException(status_code=422, detail=f"Could not parse archetypes: {data['error']}")
     virgin = str(data.get("virgin", "")).strip()

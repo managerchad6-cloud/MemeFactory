@@ -24,7 +24,7 @@ load_dotenv()
 # CONFIG
 # ======================
 
-MODEL = "gemini-3.1-flash-image-preview"
+MODEL = "gemini-3.1-flash-image"
 
 BASE_IMAGE = "base.png"
 

@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 # ======================
 # ENV
@@ -18,7 +19,7 @@ load_dotenv()
 # CONFIG
 # ======================
 
-MODEL = "gpt-5.2"
+MODEL = "gemini-3.8-flash"
 CONTEXT_FILE = "context.json"
 
 # Support environment variable override for job isolation
@@ -223,19 +224,13 @@ def clamp_labels(labels: List[str]) -> List[str]:
 # ======================
 
 def generate_reskin_prompt(
-    client: OpenAI,
+    client,
     context: str,
     virgin: str,
     chad: str,
     style: dict,
 ) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": context},
-        {
-            "role": "user",
-            "content": f"""
-Virgin archetype: {virgin}
+    user_content = context + "\n\n" + f"""Virgin archetype: {virgin}
 Chad archetype: {chad}
 
 Write the FULL Nanobanana IMAGE RESKIN PROMPT for the FIRST image pass.
@@ -266,20 +261,18 @@ Do NOT add any additional text.
 Do NOT alter the background.
 This is the FIRST image pass only.
 
-Output ONLY the prompt text.
-"""
-        },
-    ]
+Output ONLY the prompt text."""
 
-    resp = client.chat.completions.create(
+    resp = client.models.generate_content(
         model=MODEL,
-        messages=messages,
+        contents=user_content,
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
     )
 
-    return resp.choices[0].message.content.strip()
+    return resp.text.strip()
 
 def resolve_labels(
-    client: OpenAI,
+    client,
     context: str,
     virgin: str,
     chad: str,
@@ -331,24 +324,23 @@ Return a JSON object with exactly two keys: "virgin_labels" and "chad_labels".
 "chad_labels" must have exactly {c_target} strings.
 No duplicates within each list. Output ONLY valid JSON."""
 
-    resp = client.chat.completions.create(
+    resp = client.models.generate_content(
         model=MODEL,
-        messages=[
-            {"role": "system", "content": "You generate Virgin vs Chad meme labels. Output ONLY valid JSON."},
-            {"role": "user", "content": context},
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
+        contents=context + "\n\n" + prompt,
+        config=types.GenerateContentConfig(
+            system_instruction="You generate Virgin vs Chad meme labels. Output ONLY valid JSON.",
+            response_mime_type="application/json",
+        ),
     )
 
-    data = json.loads(resp.choices[0].message.content)
+    data = json.loads(resp.text)
     full_virgin = data.get("virgin_labels", virgin_labels)[:v_target]
     full_chad = data.get("chad_labels", chad_labels)[:c_target]
     return full_virgin, full_chad
 
 
 def generate_annotation_prompt(
-    client: OpenAI,
+    client,
     context: str,
     virgin: str,
     chad: str,
@@ -374,13 +366,7 @@ def generate_annotation_prompt(
             + f"\n- Generate {MIN_LABELS - len(labels)}–{MAX_LABELS - len(labels)} additional labels."
         )
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": context},
-        {
-            "role": "user",
-            "content": f"""
-Virgin archetype: {virgin}
+    user_content = context + "\n\n" + f"""Virgin archetype: {virgin}
 Chad archetype: {chad}
 
 Write the FULL Nanobanana TEXT-ANNOTATION PROMPT for the SECOND image pass.
@@ -404,13 +390,14 @@ VIRGIN LABELS:
 CHAD LABELS:
 {label_instruction("chad", chad_labels)}
 
-Output ONLY the annotation prompt text.
-"""
-        },
-    ]
+Output ONLY the annotation prompt text."""
 
-    resp = client.chat.completions.create(model=MODEL, messages=messages)
-    return resp.choices[0].message.content.strip()
+    resp = client.models.generate_content(
+        model=MODEL,
+        contents=user_content,
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+    )
+    return resp.text.strip()
 
 def read_input_payload() -> dict:
     raw = sys.stdin.read().strip()
@@ -454,7 +441,7 @@ def generate_idea(
     virgin_labels = clamp_labels(virgin_labels or [])
     chad_labels = clamp_labels(chad_labels or [])
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     base_dir = Path(__file__).parent
     context = load_text(base_dir / CONTEXT_FILE)
 
