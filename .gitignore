@@ -19,3 +19,6 @@ run_batch_*.log
 # Scratch / archive
 _api.py
 refactor.json
+
+# Local virtualenv
+.venv/

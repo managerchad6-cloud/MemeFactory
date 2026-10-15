@@ -5,6 +5,7 @@ Pillow==10.1.0
 # AI/ML APIs
 openai==1.54.0
 google-generativeai==0.8.3
+google-genai  # api.py freestyle parse (was only installed by hand in prod)
 
 # Telegram Bot
 python-telegram-bot==21.8
@@ -13,3 +14,6 @@ python-telegram-bot==21.8
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 pydantic==2.10.3
+
+# Identity (vvc_identity client verifies sessions with Ed25519)
+cryptography>=42
