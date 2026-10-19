@@ -9,7 +9,8 @@ fields in requests are ignored. Reads are public; generating, parsing and voting
 
 Every generation is paid, either by a confirmed Solana transaction signed by the member's wallet
 that sent >= 1 USDC to the treasury, or by a single-use credit token from memestudio-backend
-bound to the member's wallet. Both are consumed on first use (replays rejected at the DB layer).
+bound to the member's wallet. Both are consumed on first use (replays rejected at the DB layer);
+USDC transactions are also claimed in memestudio's suite-wide ledger so they can't pay twice.
 """
 
 import hashlib
@@ -26,7 +27,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -56,6 +57,17 @@ _ADDR_RE   = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 # let anyone mint tokens. Unset = paying with credits is off.
 _CREDIT_SHARED_SECRET = os.environ.get("CREDIT_SHARED_SECRET") or None
 _CREDIT_TOKEN_MAX_AGE_MS = 5 * 60 * 1000
+
+# Suite-wide used-tx ledger in memestudio-backend: one USDC tx buys one thing across all services
+# (a Studio credit purchase can't also pay for a generation here). Unset secret = USDC payments off.
+_MEMOSTUDIO_INTERNAL_URL = (os.environ.get("MEMOSTUDIO_INTERNAL_URL") or "http://127.0.0.1:3016").rstrip("/")
+_VVC_INTERNAL_SECRET     = os.environ.get("VVC_INTERNAL_SECRET") or None
+_TX_CLAIM_PURPOSE        = "factory_generate"
+
+# /parse is free but each call is a Gemini request: cap it per wallet
+_PARSE_WINDOW_SECS = 600
+_PARSE_WINDOW_MAX  = 20
+_PARSE_DAY_MAX     = 200
 
 
 # =========================
@@ -128,6 +140,15 @@ def _init_db():
             sig      TEXT PRIMARY KEY,
             wallet   TEXT NOT NULL,
             used_at  REAL NOT NULL
+        )
+    """)
+    # /parse calls per wallet per UTC day (the 10-minute window is kept in memory)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS parse_usage (
+            wallet TEXT NOT NULL,
+            day    TEXT NOT NULL,
+            count  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (wallet, day)
         )
     """)
     con.commit()
@@ -320,19 +341,103 @@ def verify_credit_token(token: "CreditToken", wallet: str) -> tuple[bool, str]:
     return True, ""
 
 
+# =========================
+# Suite tx ledger
+# =========================
+
+def _post_tx_claim(body: dict) -> int:
+    """POST to memestudio's ledger and return the HTTP status. Raises RuntimeError if unreachable."""
+    req = urllib.request.Request(
+        f"{_MEMOSTUDIO_INTERNAL_URL}/internal/tx/claim",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-vvc-internal": _VVC_INTERNAL_SECRET or ""},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            return resp.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise RuntimeError(str(e))
+
+
+def _release_local_tx(tx_signature: str):
+    """Undo verify_usdc_payment's local consumption so the member can retry the same tx."""
+    con = sqlite3.connect(DB_PATH)
+    try:
+        con.execute("DELETE FROM used_transactions WHERE tx_signature = ?", (tx_signature,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def claim_shared_tx(tx_signature: str, wallet: str):
+    """Claim the tx in the suite ledger. Fails closed: no ledger answer, no generation."""
+    try:
+        status = _post_tx_claim({"tx_signature": tx_signature, "wallet": wallet, "purpose": _TX_CLAIM_PURPOSE})
+    except RuntimeError:
+        status = None
+    if status == 200:
+        return
+    if status == 409:
+        raise HTTPException(status_code=402, detail="Transaction already used")
+    _release_local_tx(tx_signature)
+    raise HTTPException(status_code=503, detail="Payment verification unavailable — try again shortly")
+
+
 def take_payment(wallet: str, tx_signature: Optional[str], credit_token: Optional["CreditToken"]) -> str:
     """Consume the member's payment (credits or USDC). Returns a reference stored with the job."""
     if credit_token is not None:
         ok, err = verify_credit_token(credit_token, wallet)
         ref = f"credit:{credit_token.sig}"
     elif tx_signature:
+        if not _VVC_INTERNAL_SECRET:
+            raise HTTPException(status_code=503, detail="Paying with USDC is unavailable right now")
         ok, err = verify_usdc_payment(tx_signature, wallet)
         ref = tx_signature
+        if ok:
+            claim_shared_tx(tx_signature, wallet)
     else:
         ok, err, ref = False, "Payment required: credits or a USDC transaction", ""
     if not ok:
         raise HTTPException(status_code=402, detail=err)
     return ref
+
+
+# =========================
+# /parse limits
+# =========================
+
+_parse_recent: dict = {}  # wallet -> call times in the current window
+_parse_lock = threading.Lock()
+
+
+def _take_parse_slot(wallet: str):
+    """One /parse call for this wallet, or 429 once the 10-minute or daily cap is reached."""
+    now = time.time()
+    with _parse_lock:
+        recent = [t for t in _parse_recent.get(wallet, []) if now - t < _PARSE_WINDOW_SECS]
+        if len(recent) >= _PARSE_WINDOW_MAX:
+            _parse_recent[wallet] = recent
+            retry = int(_PARSE_WINDOW_SECS - (now - recent[0])) + 1
+            raise HTTPException(status_code=429, detail="Too many parse requests — slow down",
+                                headers={"Retry-After": str(retry)})
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        con = sqlite3.connect(DB_PATH)
+        try:
+            con.execute("INSERT OR IGNORE INTO parse_usage (wallet, day, count) VALUES (?, ?, 0)", (wallet, day))
+            cur = con.execute(
+                "UPDATE parse_usage SET count = count + 1 WHERE wallet = ? AND day = ? AND count < ?",
+                (wallet, day, _PARSE_DAY_MAX),
+            )
+            con.commit()
+        finally:
+            con.close()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=429, detail="Daily parse limit reached — try again tomorrow")
+        recent.append(now)
+        _parse_recent[wallet] = recent
 
 
 # =========================
@@ -346,22 +451,25 @@ class CreditToken(BaseModel):
     sig:    str
 
 
+Label = Annotated[str, Field(max_length=120)]
+
+
 class MemeRequest(BaseModel):
     """STRICT endpoint — labels required on both sides."""
-    virgin:        str       = Field(..., min_length=1)
-    chad:          str       = Field(..., min_length=1)
-    virgin_labels: List[str] = Field(..., min_items=1, max_items=12)
-    chad_labels:   List[str] = Field(..., min_items=1, max_items=12)
+    virgin:        str         = Field(..., min_length=1, max_length=100)
+    chad:          str         = Field(..., min_length=1, max_length=100)
+    virgin_labels: List[Label] = Field(..., min_items=1, max_items=12)
+    chad_labels:   List[Label] = Field(..., min_items=1, max_items=12)
     tx_signature:  Optional[str]         = None
     credit_token:  Optional[CreditToken] = None
 
 
 class MemeRequestRaw(BaseModel):
     """RAW endpoint — labels optional. Accepts credit_token in lieu of tx_signature."""
-    virgin:        str                   = Field(..., min_length=1)
-    chad:          str                   = Field(..., min_length=1)
-    virgin_labels: Optional[List[str]]   = Field(default=None, max_items=12)
-    chad_labels:   Optional[List[str]]   = Field(default=None, max_items=12)
+    virgin:        str                   = Field(..., min_length=1, max_length=100)
+    chad:          str                   = Field(..., min_length=1, max_length=100)
+    virgin_labels: Optional[List[Label]] = Field(default=None, max_items=12)
+    chad_labels:   Optional[List[Label]] = Field(default=None, max_items=12)
     tx_signature:  Optional[str]         = Field(default=None, min_length=1)
     credit_token:  Optional[CreditToken] = None
 
@@ -654,7 +762,8 @@ async def generate_freestyle(request: MemeRequestFreestyle, wallet: str = Depend
 
 @app.post("/parse")
 async def parse_meme(request: MemeParseRequest, wallet: str = Depends(identity.member)):
-    """Parse natural-language text into archetypes. Free, but members only (it calls a paid LLM)."""
+    """Parse natural-language text into archetypes. Free, but members only and rate-limited (it calls a paid LLM)."""
+    _take_parse_slot(wallet)
     return _parse_freestyle(request.text)
 
 
