@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 ORIGIN = "http://localhost:5291"
 CREDIT_SECRET = "test-credit-secret"
+INTERNAL_SECRET = "test-internal-secret"
 
 _tmp = Path(tempfile.mkdtemp(prefix="mf-test-"))
 _key = Ed25519PrivateKey.generate()
@@ -23,6 +24,7 @@ os.environ.update({
     "IDENTITY_PUBLIC_KEY_PATH": str(_tmp / "identity.pub.pem"),
     "IDENTITY_ALLOWED_ORIGINS": ORIGIN,
     "CREDIT_SHARED_SECRET": CREDIT_SECRET,
+    "VVC_INTERNAL_SECRET": INTERNAL_SECRET,
     "OPENAI_API_KEY": "test",
 })
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -45,8 +47,8 @@ def make_token(wallet: str, member: bool = True, ttl: int = 900) -> str:
 
 @pytest.fixture
 def stubs(monkeypatch):
-    """Record payments/jobs instead of touching Solana, OpenAI or the image pipeline."""
-    calls = {"usdc": [], "jobs": [], "parsed": []}
+    """Record payments/jobs instead of touching Solana, memestudio, OpenAI or the image pipeline."""
+    calls = {"usdc": [], "jobs": [], "parsed": [], "claims": []}
 
     def fake_usdc(tx_signature, wallet):
         calls["usdc"].append((tx_signature, wallet))
@@ -62,7 +64,14 @@ def stubs(monkeypatch):
         calls["parsed"].append(text)
         return {"virgin": "A", "chad": "B", "virgin_labels": [], "chad_labels": []}
 
+    def fake_claim(body):
+        # The suite ledger: first claim of a tx wins, any later one is a 409
+        seen = [c["tx_signature"] for c in calls["claims"]]
+        calls["claims"].append(body)
+        return 409 if body["tx_signature"] in seen else 200
+
     monkeypatch.setattr(api, "verify_usdc_payment", fake_usdc)
+    monkeypatch.setattr(api, "_post_tx_claim", fake_claim)
     monkeypatch.setattr(api, "_submit_job", fake_submit)
     monkeypatch.setattr(api, "_parse_freestyle", fake_parse)
     return calls
